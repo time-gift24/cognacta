@@ -47,8 +47,8 @@ export const AGENT_COMPOSER_PRESENTATION: AgentComposerPresentation = {
   },
   classNames: {
     editor: "w-full overflow-y-auto whitespace-pre-wrap break-words px-2.5 pt-2.5 pb-2 text-base leading-6 outline-none",
-    creditsEditor: "min-h-10 px-2.5 pt-2 pb-2 !text-sm leading-5",
-    creditsShell: "chat-composer-shell relative w-full max-w-3xl bg-muted p-[3px] transition-[border-radius] duration-200",
+    creditsEditor: "px-2.5 pt-1 pb-2 !text-sm leading-6",
+    creditsShell: "chat-composer-shell relative w-full max-w-[952px] p-[3px] transition-[border-radius] duration-200",
     creditsShellOpen: "rounded-t-none rounded-b-[20px]",
     creditsShellClosed: "rounded-[20px]",
     search: "relative h-9 shrink-0 overflow-hidden rounded-full text-sm transition-colors duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -57,8 +57,8 @@ export const AGENT_COMPOSER_PRESENTATION: AgentComposerPresentation = {
     fallbackAction: "size-10 rounded-full active:scale-95",
     attachment: "group flex h-9 min-w-0 shrink-0 items-center gap-1.5 rounded-[10px] border border-border/70 bg-background/90 p-1 pr-0.5",
   },
-  editorLineHeightRem: 1.25,
-  creditsMinRows: 2,
+  editorLineHeightRem: 1.5,
+  creditsMinRows: 1,
   attachmentMotion: {
     initial: { opacity: 0, scale: 0.85 },
     exit: { opacity: 0, scale: 0.85, transition: { duration: 0.15 } },

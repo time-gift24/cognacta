@@ -25,6 +25,157 @@ const SUGGESTIONS = [
   "总结一下这个仓库本周的变更",
 ]
 
+const DEFAULT_CHAT_WIDTH = 920
+const MIN_CHAT_WIDTH = 640
+const CHAT_WIDTH_EDGE_BUDGET = 176
+const CHAT_WIDTH_STORAGE_KEY = "cognacta.chat.contentWidth"
+
+type ChatWidthSide = "left" | "right"
+type ChatWidthDrag = {
+  side: ChatWidthSide
+  pointerId: number
+  startX: number
+  startWidth: number
+}
+
+function readChatWidthPreference(): number | null {
+  if (typeof window === "undefined") return null
+  try {
+    const value = Number(window.localStorage.getItem(CHAT_WIDTH_STORAGE_KEY))
+    return Number.isFinite(value) && value >= MIN_CHAT_WIDTH ? value : null
+  } catch {
+    return null
+  }
+}
+
+function clampChatWidth(width: number, containerWidth: number) {
+  const max = Math.max(MIN_CHAT_WIDTH, containerWidth - CHAT_WIDTH_EDGE_BUDGET)
+  return Math.min(Math.max(width, MIN_CHAT_WIDTH), max)
+}
+
+function saveChatWidthPreference(width: number) {
+  try {
+    window.localStorage.setItem(CHAT_WIDTH_STORAGE_KEY, String(width))
+  } catch {
+    // Resizing still works when browser storage is unavailable.
+  }
+}
+
+function ChatWidthHandles({
+  containerRef,
+  onWidthChange,
+  onWidthCommit,
+}: {
+  containerRef: React.RefObject<HTMLDivElement | null>
+  onWidthChange: (width: number) => void
+  onWidthCommit: (width: number) => void
+}) {
+  const drag = React.useRef<ChatWidthDrag | null>(null)
+
+  const currentWidth = (container: HTMLDivElement) =>
+    container
+      .querySelector<HTMLElement>('[data-slot="message-scroller-content"]')
+      ?.getBoundingClientRect().width ?? DEFAULT_CHAT_WIDTH
+
+  const widthAt = (side: ChatWidthSide, clientX: number) => {
+    const active = drag.current
+    const container = containerRef.current
+    if (!active || !container) return null
+    const delta = clientX - active.startX
+    return clampChatWidth(
+      active.startWidth + (side === "right" ? delta : -delta) * 2,
+      container.clientWidth,
+    )
+  }
+
+  const endDrag = (
+    side: ChatWidthSide,
+    event: React.PointerEvent<HTMLDivElement>,
+    commit: boolean,
+  ) => {
+    const active = drag.current
+    if (!active || active.side !== side || active.pointerId !== event.pointerId)
+      return
+    const width = widthAt(side, event.clientX) ?? active.startWidth
+    onWidthChange(commit ? width : active.startWidth)
+    if (commit && event.clientX !== active.startX) onWidthCommit(width)
+    drag.current = null
+    delete event.currentTarget.dataset.dragging
+    if (event.currentTarget.hasPointerCapture(event.pointerId))
+      event.currentTarget.releasePointerCapture(event.pointerId)
+  }
+
+  return (
+    <>
+      {(["left", "right"] as const).map((side) => (
+        <div
+          key={side}
+          className="chat-width-handle"
+          data-side={side}
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="调整对话宽度"
+          aria-valuemin={MIN_CHAT_WIDTH}
+          aria-valuemax={Math.max(
+            MIN_CHAT_WIDTH,
+            (containerRef.current?.clientWidth ??
+              DEFAULT_CHAT_WIDTH + CHAT_WIDTH_EDGE_BUDGET) -
+              CHAT_WIDTH_EDGE_BUDGET,
+          )}
+          aria-valuenow={Math.round(
+            containerRef.current ? currentWidth(containerRef.current) : DEFAULT_CHAT_WIDTH,
+          )}
+          tabIndex={0}
+          onPointerMove={(event) => {
+            const bounds = event.currentTarget.getBoundingClientRect()
+            event.currentTarget.style.setProperty(
+              "--chat-width-handle-pointer-y",
+              `${event.clientY - bounds.top}px`,
+            )
+            const width = widthAt(side, event.clientX)
+            if (width !== null) onWidthChange(width)
+          }}
+          onPointerDown={(event) => {
+            if (event.button !== 0 || !containerRef.current) return
+            event.preventDefault()
+            drag.current = {
+              side,
+              pointerId: event.pointerId,
+              startX: event.clientX,
+              startWidth: clampChatWidth(
+                currentWidth(containerRef.current),
+                containerRef.current.clientWidth,
+              ),
+            }
+            event.currentTarget.setPointerCapture(event.pointerId)
+            event.currentTarget.dataset.dragging = "true"
+          }}
+          onPointerUp={(event) => endDrag(side, event, true)}
+          onPointerCancel={(event) => endDrag(side, event, false)}
+          onLostPointerCapture={(event) => endDrag(side, event, false)}
+          onKeyDown={(event) => {
+            if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return
+            const container = containerRef.current
+            if (!container) return
+            event.preventDefault()
+            const outward =
+              side === "right"
+                ? event.key === "ArrowRight"
+                : event.key === "ArrowLeft"
+            const step = event.shiftKey ? 64 : 32
+            const width = clampChatWidth(
+              currentWidth(container) + (outward ? step : -step),
+              container.clientWidth,
+            )
+            onWidthChange(width)
+            onWidthCommit(width)
+          }}
+        />
+      ))}
+    </>
+  )
+}
+
 export function ChatScreen({
   threadId = "main",
   models,
@@ -37,6 +188,9 @@ export function ChatScreen({
   suggestions?: readonly string[]
 }) {
   const { threads, desktop, runs } = useAppDependencies()
+  const screenRef = React.useRef<HTMLDivElement>(null)
+  const widthPreference = React.useRef(readChatWidthPreference())
+  const [chatWidth, setChatWidth] = React.useState<number | null>(null)
   const [modelSnapshot, setModelSnapshot] = React.useState<{
     threadId: string
     model: string
@@ -93,6 +247,26 @@ export function ChatScreen({
   )
   const reduce = useReducedMotion()
 
+  React.useLayoutEffect(() => {
+    const screen = screenRef.current
+    if (!screen) return
+    const updateWidth = () => {
+      const preferred = widthPreference.current
+      if (preferred !== null)
+        setChatWidth(clampChatWidth(preferred, screen.clientWidth))
+    }
+    const observer = new ResizeObserver(updateWidth)
+    observer.observe(screen)
+    updateWidth()
+    return () => observer.disconnect()
+  }, [])
+
+  const setAndRememberChatWidth = React.useCallback((width: number) => {
+    widthPreference.current = width
+    setChatWidth(width)
+    saveChatWidthPreference(width)
+  }, [])
+
   const composer = (
     <ChatComposer
       store={store}
@@ -105,14 +279,23 @@ export function ChatScreen({
   return (
     <TooltipProvider>
       <LayoutGroup id={threadId}>
-        <div className="flex h-full min-h-0 flex-col">
+        <div
+          ref={screenRef}
+          className="relative isolate flex h-full min-h-0 flex-col"
+          style={
+            chatWidth === null
+              ? undefined
+              : ({ "--chat-content-width": `${chatWidth}px` } as React.CSSProperties)
+          }
+        >
           {empty ? (
-            <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-4 sm:px-8">
+            <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-2">
               <motion.div
                 initial={reduce ? false : { opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={reduce ? { duration: 0 } : SPRING_PANEL}
-                className="flex w-full max-w-[736px] flex-col items-center gap-6"
+                className="flex w-full flex-col items-center gap-6"
+                style={{ maxWidth: "calc(var(--chat-content-width, 920px) + 32px)" }}
               >
                 <motion.div
                   layoutId={reduce ? undefined : "composer"}
@@ -171,13 +354,14 @@ export function ChatScreen({
                   <span className="truncate">{workspaceName}</span>
                 </div>
               ) : null}
-              <div className="min-h-0 flex-1">
+              <div className="relative z-[1] min-h-0 flex-1">
                 <ChatThreadLoading store={store} onEditMessage={editMessage} />
               </div>
-              <div className="shrink-0 px-4 pb-4 sm:px-8 sm:pb-6">
+              <div className="relative z-[1] shrink-0 px-2 pb-4 sm:pb-6">
                 <motion.div
                   layoutId={reduce ? undefined : "composer"}
-                  className="mx-auto max-w-[736px]"
+                  className="mx-auto w-full"
+                  style={{ maxWidth: "calc(var(--chat-content-width, 920px) + 32px)" }}
                   onInputCapture={preloadChatThread}
                   onPointerEnter={preloadChatThread}
                 >
@@ -185,6 +369,13 @@ export function ChatScreen({
                 </motion.div>
               </div>
             </>
+          )}
+          {!empty && (
+            <ChatWidthHandles
+              containerRef={screenRef}
+              onWidthChange={setChatWidth}
+              onWidthCommit={setAndRememberChatWidth}
+            />
           )}
         </div>
       </LayoutGroup>

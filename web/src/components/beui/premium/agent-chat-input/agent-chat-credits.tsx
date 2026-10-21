@@ -271,7 +271,7 @@ export function AgentChatCredits({
       placeholder={placeholder}
       disabled={disabled}
       minRows={presentation.creditsMinRows ?? 3}
-      maxRows={6}
+      maxRows={14}
       onChange={handleComposerChange}
       onSlashQueryChange={skillCommand.onQueryChange}
       onNavKeyDown={skillCommand.onNavKeyDown}

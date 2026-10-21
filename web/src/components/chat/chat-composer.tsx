@@ -91,7 +91,7 @@ export function ChatComposer({
   return (
     <div
       data-slot="chat-composer-anchor"
-      className={cn("relative max-w-[736px]", className)}
+      className={cn("relative max-w-[952px]", className)}
     >
       {task && ownsTask && approval ? (
         <ApprovalPanel
@@ -163,7 +163,7 @@ export function ChatComposer({
         }}
         className="max-w-none"
       >
-        <AgentComposerSurface className="px-1 py-2">
+        <AgentComposerSurface className="bg-card px-1 py-2">
           <AgentComposerInput />
           <div className="flex items-center justify-between gap-3 px-1">
             <div className="flex min-w-0 items-center gap-0.5 text-muted-foreground">

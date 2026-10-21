@@ -72,7 +72,7 @@ export function CreditsToolbar({
       disabled={disabled || busy}
       reduce={reduce}
     >
-      <AttachIcon className="size-[18px]" />
+      <AttachIcon className="size-4" />
     </ActionButton>
   );
   const voice = (
@@ -82,7 +82,7 @@ export function CreditsToolbar({
       disabled={disabled || busy || !onVoice}
       reduce={reduce}
     >
-      <VoiceIcon className="size-[18px]" />
+      <VoiceIcon className="size-4" />
     </ActionButton>
   );
   const search = (
@@ -142,7 +142,7 @@ export function CreditsToolbar({
               className="size-4 motion-safe:animate-spin"
             />
           ) : (
-            <SendIcon className="size-5" strokeWidth={2.4} />
+            <SendIcon className="size-4" strokeWidth={2.4} />
           )}
         </motion.span>
       </AnimatePresence>

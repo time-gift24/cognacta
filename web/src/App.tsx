@@ -293,7 +293,7 @@ function WorkspaceApp({
     useState<readonly AgentResource[]>(skills)
   const [openedSkillId, setOpenedSkillId] = useState<string | null>(null)
   const [skillsVisited, setSkillsVisited] = useState(false)
-  const [workbenchOpen, setWorkbenchOpen] = useState(true)
+  const [workbenchOpen, setWorkbenchOpen] = useState(false)
   const mobileWindow = useIsMobile()
   const workbenchOverlay = mobileWindow && workbenchOpen
   const [navigationExpanded, setNavigationExpanded] = useState(true)
