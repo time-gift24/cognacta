@@ -1,0 +1,173 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Popover focus regression check</title>
+<!-- Run npm run dev, then open /tests/focus.browser.html. Both viewport sizes run automatically. -->
+<div id="fixture"></div>
+<pre id="result">Running…</pre>
+<script type="module">
+  import React from "react";
+  import { createRoot } from "react-dom/client";
+  import { flushSync } from "react-dom";
+  import "/src/index.css";
+  import { SidebarRail } from "/src/components/premium/sidebar-blocks/sidebar-rail.tsx";
+  import { AnimatedModal, AnimatedModalTitle } from "/src/components/motion/animated-modal.tsx";
+  import { CreditsModelSelector } from "/src/components/premium/agent-chat-input/credits-model-selector.tsx";
+
+  const result = document.querySelector("#result");
+  const viewport = new URLSearchParams(location.search).get("viewport");
+  const wait = (ms = 20) => new Promise(resolve => setTimeout(resolve, ms));
+  const assert = (condition, message) => { if (!condition) throw new Error(message); };
+  const until = async (condition, message, timeout = 5000) => {
+    const deadline = performance.now() + timeout;
+    while (!condition() && performance.now() < deadline) await wait();
+    assert(condition(), message);
+  };
+  const click = element => flushSync(() => element.click());
+  const key = (value, options = {}) => flushSync(() => document.activeElement.dispatchEvent(
+    new KeyboardEvent("keydown", { key: value, bubbles: true, cancelable: true, ...options }),
+  ));
+  const dialog = () => document.querySelector('[data-slot="dialog-content"]');
+  const search = () => document.querySelector('button[aria-label="搜索导航"]');
+  const searchInput = () => document.querySelector('[data-slot=command-input]');
+  const toggle = () => document.querySelector('button[aria-label="展开导航"], button[aria-label="收起导航"]');
+  const drawer = () => document.querySelector('[data-mobile="true"]');
+  const modelTrigger = () => document.querySelector('button[aria-label^="Select model:"]');
+  const models = () => [...document.querySelectorAll('[role="menuitemradio"]')];
+  const passed = [];
+
+  function Fixture() {
+    const [model, setModel] = React.useState("pine");
+    const [previewOpen, setPreviewOpen] = React.useState(false);
+    return React.createElement(SidebarRail, null,
+      React.createElement("input", { "aria-label": "Keyboard origin" }),
+      React.createElement(CreditsModelSelector, {
+        models: [{ id: "pine", label: "Pine" }, { id: "sonnet", label: "Sonnet" }],
+        selectedModel: model,
+        disabled: false,
+        onModelChange: setModel,
+      }),
+      React.createElement("button", { onClick: () => setPreviewOpen(true) }, "Open preview"),
+      React.createElement(AnimatedModal, { open: previewOpen, onOpenChange: setPreviewOpen },
+        React.createElement(AnimatedModalTitle, null, "Image preview"),
+        React.createElement("button", { "data-autofocus": true, onClick: () => setPreviewOpen(false) }, "Close preview"),
+      ),
+    );
+  }
+
+  try {
+    if (!viewport) {
+      for (const [name, width] of [["desktop", 1100], ["mobile", 390]]) {
+        const frame = document.createElement("iframe");
+        frame.title = `${name} focus regression`;
+        frame.width = width;
+        frame.height = 844;
+        frame.src = `${location.pathname}?viewport=${name}`;
+        document.querySelector("#fixture").append(frame);
+        await until(() => frame.contentDocument?.querySelector("#result")?.dataset.passed,
+          `${name} fixture did not finish`, 30000);
+        const childResult = frame.contentDocument.querySelector("#result");
+        assert(childResult.dataset.passed === "true", childResult.textContent);
+        passed.push(childResult.textContent);
+      }
+    } else {
+      const root = createRoot(document.querySelector("#fixture"));
+      flushSync(() => root.render(React.createElement(Fixture)));
+      const mobile = viewport === "mobile";
+      await until(() => Boolean(search()) && Boolean(drawer()) === mobile, "Sidebar did not mount at requested viewport");
+
+      if (mobile) {
+        toggle().focus();
+        click(toggle());
+        await until(() => drawer()?.getAttribute("aria-hidden") === "false" && document.activeElement === search(),
+          "Mobile drawer did not focus its first control");
+      }
+      search().focus();
+      click(search());
+      await until(() => document.activeElement === searchInput(), "Search did not focus the input");
+      key("Escape");
+      await until(() => !dialog() && document.activeElement === search(), "Search dismissal did not restore its opener");
+      passed.push("search Escape restores opener");
+
+      click(search());
+      await until(() => document.activeElement === searchInput(), "Search did not reopen");
+      key("Enter");
+      await until(() => !dialog(), "Selecting a search result did not close the dialog");
+      if (mobile) {
+        await until(() => drawer()?.getAttribute("aria-hidden") === "true" && document.activeElement === toggle(),
+          "Selecting a mobile result did not close the drawer and focus the navigation toggle");
+      } else {
+        await until(() => document.activeElement === search(), "Selecting a desktop result did not restore search focus");
+      }
+      passed.push("search selection restores a visible control");
+
+      const origin = document.querySelector('input[aria-label="Keyboard origin"]');
+      origin.focus();
+      key("k", { ctrlKey: true });
+      await until(() => document.activeElement === searchInput(), "Keyboard shortcut did not open search");
+      key("Escape");
+      await until(() => !dialog() && document.activeElement === origin, "Shortcut dismissal did not restore keyboard origin");
+      passed.push("keyboard shortcut preserves input focus");
+
+      key("k", { ctrlKey: true });
+      await until(() => document.activeElement === searchInput(), "Rapid keyboard search did not open");
+      key("Escape");
+      key("k", { ctrlKey: true });
+      await until(() => document.activeElement === searchInput(), "Rapid keyboard search did not reopen");
+      key("Escape");
+      await until(() => !dialog() && document.activeElement === origin, "Rapid keyboard reopen must preserve the original input opener");
+
+      if (!mobile) {
+        click(toggle());
+        document.querySelector('button[aria-label="工作区"]').focus();
+        await until(() => !search().closest("[inert]"), "Keyboard focus did not open desktop peek");
+        search().focus();
+        click(search());
+        await until(() => document.activeElement === searchInput(), "Peek search did not open");
+        key("Escape");
+        await until(() => !dialog() && document.activeElement === toggle(), "Closed desktop peek did not restore navigation toggle");
+        passed.push("closed desktop peek uses visible fallback");
+      }
+
+      modelTrigger().focus();
+      click(modelTrigger());
+      await until(() => models().length === 2 && document.activeElement === models()[0], "Model popover did not focus selected model");
+      key("Escape");
+      await wait(20);
+      click(modelTrigger());
+      await until(() => models().length === 2 && document.activeElement === models()[0], "Rapid model reopen did not restore selected-item focus");
+      models()[1].focus();
+      click(models()[1]);
+      await until(() => !models().length && document.activeElement === modelTrigger(), "Model selection did not restore trigger focus");
+      assert(modelTrigger().textContent.includes("Sonnet"), "Model selection did not update the selected model");
+      click(modelTrigger());
+      await until(() => models().length === 2 && document.activeElement === models()[1], "Reopened popover did not focus new selection");
+      key("k", { ctrlKey: true });
+      await until(() => document.activeElement === searchInput(), "Search did not open above model popover");
+      key("Escape");
+      await until(() => !dialog() && models().length === 2 && document.activeElement === models()[1], "Search Escape also dismissed the underlying model popover");
+      key("Escape");
+      await until(() => !models().length && document.activeElement === modelTrigger(), "Model Escape did not restore trigger focus");
+      passed.push("model open, select, reopen and Escape preserve focus");
+
+      const preview = [...document.querySelectorAll("button")].find(button => button.textContent === "Open preview");
+      preview.focus();
+      click(preview);
+      await until(() => document.activeElement.textContent === "Close preview", "Preview did not receive focus");
+      const sidebarState = document.querySelector('[data-slot="sidebar-wrapper"]').dataset.state;
+      key("k", { ctrlKey: true });
+      key("b", { ctrlKey: true });
+      assert(!dialog() && document.activeElement.textContent === "Close preview", "Navigation shortcut stole focus from a modal");
+      assert(document.querySelector('[data-slot="sidebar-wrapper"]').dataset.state === sidebarState, "Sidebar shortcut changed the background while a modal was open");
+      assert(!mobile || drawer().getAttribute("aria-hidden") === "true", "Sidebar shortcut opened a drawer behind the modal");
+      key("Escape");
+      await until(() => document.activeElement === preview, "Closing preview did not restore its opener");
+      passed.push("rapid reopen, nested Escape and modal shortcut isolation");
+    }
+    result.textContent = `PASS ${viewport ?? "all viewports"}: ${passed.join("; ")}`;
+    result.dataset.passed = "true";
+  } catch (error) {
+    result.textContent = `FAIL ${viewport ?? "all viewports"}: ${error.message}`;
+    result.dataset.passed = "false";
+    throw error;
+  }
+</script>

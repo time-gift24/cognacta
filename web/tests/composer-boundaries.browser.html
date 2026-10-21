@@ -1,0 +1,248 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Composer boundary regression check</title>
+<div id="fixture"></div>
+<pre id="result">Running…</pre>
+<script type="module">
+  import React from "react";
+  import { createRoot } from "react-dom/client";
+  import { flushSync } from "react-dom";
+  import "/src/index.css";
+  import { AgentChatComposer } from "/src/components/premium/agent-chat-input/composer.tsx";
+  import { AgentChatCredits } from "/src/components/premium/agent-chat-input/agent-chat-credits.tsx";
+  import { AgentChatCredits as BeuiAgentChatCredits } from "/src/components/beui/premium/agent-chat-input/agent-chat-credits.tsx";
+  import { CreditsModelSelector } from "/src/components/premium/agent-chat-input/credits-model-selector.tsx";
+
+  const fixture = document.querySelector("#fixture");
+  const result = document.querySelector("#result");
+  const root = createRoot(fixture);
+  const h = React.createElement;
+  const checks = [];
+  const wait = (ms = 0) => new Promise(resolve => setTimeout(resolve, ms));
+  const assert = (condition, message) => { if (!condition) throw new Error(message); };
+  const render = (Component, props) => flushSync(() => root.render(h(Component, props)));
+  const editor = () => fixture.querySelector('[role="textbox"]');
+  const click = element => flushSync(() => element.click());
+  const key = (name, extra = {}) => flushSync(() => editor().dispatchEvent(new KeyboardEvent("keydown", { key: name, bubbles: true, cancelable: true, ...extra })));
+  const select = (node, start = 0, end = start) => {
+    editor().focus();
+    const range = document.createRange();
+    range.setStart(node, start);
+    range.setEnd(node, end);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+  };
+  const insert = text => flushSync(() => {
+    editor().focus();
+    assert(document.execCommand("insertText", false, text), "Native insertion failed");
+  });
+  const run = async (name, test) => {
+    flushSync(() => root.render(null));
+    await wait(250);
+    try { await test(); checks.push({ name, passed: true }); }
+    catch (error) { checks.push({ name, passed: false, error: error.message }); }
+  };
+  const skill = { id: "browser", label: "Browser" };
+
+  await run("Template defaults still allow an attachment-only draft", () => {
+    const attachment = { id: "file", name: "note.txt", type: "text/plain" };
+    const submitted = [];
+    render(BeuiAgentChatCredits, {
+      skills: [],
+      attachments: [attachment],
+      onSubmit: (text, attachments) => submitted.push({ text, attachments }),
+    });
+    click(fixture.querySelector('button[aria-label="Send message"]'));
+    assert(submitted.length === 1 && submitted[0].text === "" && submitted[0].attachments[0] === attachment, "Template attachment-only behavior must remain available");
+  });
+  await run("Shared Credits preserves a rejected draft before clearing", () => {
+    let submitted = 0;
+    render(BeuiAgentChatCredits, {
+      skills: [],
+      defaultValue: "keep this draft",
+      clearOnSubmit: true,
+      onSubmit: () => { submitted += 1; return false; },
+    });
+    click(fixture.querySelector('button[aria-label="Send message"]'));
+    assert(submitted === 1 && editor().textContent === "keep this draft", "Rejected shared submissions must not clear the native draft");
+  });
+  await run("Skill tokens require complete word boundaries", () => {
+    const ref = React.createRef();
+    render(AgentChatComposer, { ref, skills: [skill], defaultValue: "https://example.com/Browserland /Browserland" });
+    assert(ref.current.serialize().skillIds.length === 0, "URLs and skill-label prefixes must remain plain text");
+    render(AgentChatComposer, { ref, skills: [skill], value: "/Browser next" });
+    assert(ref.current.serialize().skillIds[0] === "browser", "A complete slash token must still resolve");
+  });
+  await run("Skill insertion replaces the selected range", () => {
+    const ref = React.createRef();
+    render(AgentChatComposer, { ref, skills: [skill], defaultValue: "replace me" });
+    select(editor().firstChild, 0, 10);
+    flushSync(() => ref.current.insertSkill(skill));
+    assert(ref.current.serialize().text.trim() === "/Browser", "Skill insertion must replace selected text");
+  });
+  await run("Moving the caret invalidates the slash menu", async () => {
+    render(AgentChatCredits, { skills: [skill], onSubmit() {} });
+    insert("/Br");
+    select(editor().firstChild, 0);
+    document.dispatchEvent(new Event("selectionchange"));
+    await wait();
+    key("Enter");
+    assert(!editor().querySelector('[data-skill-id]'), "A stale slash query must not insert a skill at a different caret");
+  });
+  await run("Disabling the composer closes an open skill selection", () => {
+    const props = { skills: [skill], onSubmit() {} };
+    render(AgentChatCredits, props);
+    insert("/Br");
+    render(AgentChatCredits, { ...props, disabled: true });
+    const option = fixture.querySelector('[data-slot="credits-skill-panel"] button');
+    if (option) click(option);
+    assert(editor().textContent === "/Br", "Disabled skill choices must not mutate the draft");
+  });
+  await run("A shrinking skill catalog keeps keyboard selection valid", () => {
+    let submissions = 0;
+    const props = { onSubmit: () => { submissions += 1; return false; } };
+    render(AgentChatCredits, { ...props, skills: [skill, { id: "build", label: "Build" }] });
+    insert("/");
+    key("ArrowDown");
+    render(AgentChatCredits, { ...props, skills: [skill] });
+    key("Enter");
+    assert(submissions === 0 && editor().querySelector('[data-skill-id="browser"]'), "Enter must choose the remaining skill instead of submitting a slash draft");
+  });
+  await run("Disabled editor ignores submit hotkeys", () => {
+    let submitted = 0;
+    const props = { skills: [], defaultValue: "draft", onSubmit: () => { submitted += 1; } };
+    render(AgentChatComposer, props);
+    editor().focus();
+    render(AgentChatComposer, { ...props, disabled: true });
+    key("Enter");
+    assert(submitted === 0, "An editor disabled while focused must not submit");
+  });
+  await run("IME composition cannot submit an unfinished draft", () => {
+    let submitted = 0;
+    render(AgentChatComposer, { skills: [], onSubmit: () => { submitted += 1; } });
+    editor().dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    key("Enter");
+    key("Enter", { isComposing: true });
+    assert(submitted === 0, "IME confirmation must not submit");
+    flushSync(() => editor().dispatchEvent(new CompositionEvent("compositionend", { bubbles: true })));
+    key("Enter");
+    assert(submitted === 1, "Ordinary Enter after composition must submit");
+  });
+  await run("Rejected typing at maxLength preserves undo history", () => {
+    const ref = React.createRef();
+    render(AgentChatComposer, { ref, skills: [], maxLength: 2 });
+    insert("ab");
+    const beforeInput = new InputEvent("beforeinput", { bubbles: true, cancelable: true, inputType: "insertText", data: "c" });
+    flushSync(() => {
+      if (editor().dispatchEvent(beforeInput)) document.execCommand("insertText", false, "c");
+    });
+    assert(ref.current.serialize().text === "ab", "Overflow must not change accepted text");
+    flushSync(() => document.execCommand("undo"));
+    assert(ref.current.serialize().text === "", "Rejecting overflow must preserve undo of accepted input");
+  });
+  await run("maxLength does not split emoji surrogate pairs", () => {
+    const ref = React.createRef();
+    render(AgentChatComposer, { ref, skills: [], maxLength: 1 });
+    editor().focus();
+    const clipboardData = new DataTransfer();
+    clipboardData.setData("text/plain", "😀");
+    flushSync(() => editor().dispatchEvent(new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true })));
+    assert(ref.current.serialize().text === "", "Paste must not insert half of an emoji");
+    render(AgentChatComposer, { ref, skills: [], maxLength: 2, value: "a😀" });
+    assert(ref.current.serialize().text === "a", "Controlled text must clamp at a Unicode code point boundary");
+  });
+  await run("Replacing a multiline selection uses the full available length", () => {
+    const ref = React.createRef();
+    render(AgentChatComposer, { ref, skills: [], maxLength: 4, defaultValue: "a\nb" });
+    editor().focus();
+    const range = document.createRange();
+    range.selectNodeContents(editor());
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    const beforeInput = new InputEvent("beforeinput", { bubbles: true, cancelable: true, inputType: "insertText", data: "wxyz" });
+    assert(editor().dispatchEvent(beforeInput), "Typing may replace a full multiline selection up to maxLength");
+    const clipboardData = new DataTransfer();
+    clipboardData.setData("text/plain", "wxyz");
+    flushSync(() => editor().dispatchEvent(new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true })));
+    assert(ref.current.serialize().text === "wxyz", "Paste must count selected line breaks when computing remaining capacity");
+  });
+  await run("Replacing the model catalog requires an explicit selection", () => {
+    let submittedModel;
+    const props = { skills: [], defaultValue: "draft", onSubmit: (_text, _files, _skills, model) => { submittedModel = model; } };
+    render(AgentChatCredits, { ...props, models: [{ id: "a", label: "A" }] });
+    render(AgentChatCredits, { ...props, models: [{ id: "b", label: "B" }] });
+    assert(fixture.querySelector('button[aria-label="Send message"]').disabled && submittedModel === undefined, "A removed selection must not fall back to the first model after a catalog refresh");
+    render(AgentChatCredits, { ...props, models: [{ id: "b", label: "B" }], model: "b" });
+    click(fixture.querySelector('button[aria-label="Send message"]'));
+    assert(submittedModel === "b", "An explicit new selection may submit");
+    render(AgentChatCredits, { ...props, models: [] });
+    assert(fixture.querySelector('button[aria-label="Send message"]').disabled, "An empty catalog must not submit a removed model");
+  });
+  await run("An open model selector respects a disabled transition", async () => {
+    let changed = 0;
+    const props = { models: [{ id: "a", label: "A" }, { id: "b", label: "B" }], selectedModel: "a", disabled: false, onModelChange: () => { changed += 1; } };
+    render(CreditsModelSelector, props);
+    click(fixture.querySelector("button"));
+    await wait();
+    render(CreditsModelSelector, { ...props, disabled: true });
+    const option = document.querySelector('[data-morph-popover-portal]:not([inert]) button');
+    if (option) click(option);
+    assert(changed === 0, "Disabling an open selector must prevent selection");
+  });
+  await run("Disabled attachment controls cannot mutate the draft", () => {
+    let changes = 0;
+    render(AgentChatCredits, { skills: [], disabled: true, defaultAttachments: [{ id: "file", name: "file.txt" }], onAttachmentsChange: () => { changes += 1; } });
+    click(fixture.querySelector('button[aria-label="Remove file.txt"]'));
+    assert(changes === 0, "Removing an attachment must respect disabled state");
+    const fileInput = fixture.querySelector('input[type="file"]');
+    assert(fileInput.disabled, "Disabled composer must disable its native file input");
+    const files = new DataTransfer();
+    files.items.add(new File(["late"], "late.txt", { type: "text/plain" }));
+    flushSync(() => {
+      fileInput.files = files.files;
+      fileInput.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    assert(changes === 0 && fileInput.value === "", "A late picker result must not mutate a disabled draft");
+  });
+  await run("Busy Enter does not submit and stop preserves the next draft", () => {
+    let submissions = 0;
+    let stops = 0;
+    const props = { skills: [], defaultValue: "next draft", onSubmit: () => { submissions += 1; return false; }, onStop: () => { stops += 1; } };
+    render(AgentChatCredits, { ...props, status: "streaming" });
+    key("Enter");
+    assert(submissions === 0 && stops === 0, "Enter during streaming must not send or stop");
+    click(fixture.querySelector('button[aria-label="Stop response"]'));
+    assert(stops === 1 && editor().textContent === "next draft", "Stopping must preserve the next draft");
+    render(AgentChatCredits, { ...props, status: "ready" });
+    key("Enter");
+    assert(submissions === 1 && editor().textContent === "next draft", "Rejected submission after stop must preserve the draft");
+  });
+  await run("Image preview URLs are revoked after removal and unmount", async () => {
+    const create = URL.createObjectURL;
+    const revoke = URL.revokeObjectURL;
+    const created = [];
+    const revoked = [];
+    URL.createObjectURL = file => { const url = create.call(URL, file); created.push(url); return url; };
+    URL.revokeObjectURL = url => { revoked.push(url); revoke.call(URL, url); };
+    try {
+      const attachment = { id: "image", name: "preview.svg", type: "image/svg+xml", file: new File(['<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>'], "preview.svg", { type: "image/svg+xml" }) };
+      render(AgentChatCredits, { skills: [], attachments: [attachment] });
+      await wait();
+      assert(fixture.querySelector("img")?.src.startsWith("blob:"), "Image attachments need preview URLs");
+      render(AgentChatCredits, { skills: [], attachments: [] });
+      await wait();
+      render(AgentChatCredits, { skills: [], attachments: [attachment] });
+      await wait();
+      flushSync(() => root.render(null));
+      assert(created.length === 2 && revoked.length === 2 && created.every(url => revoked.includes(url)), "Each owned object URL must be revoked exactly once");
+    } finally {
+      URL.createObjectURL = create;
+      URL.revokeObjectURL = revoke;
+    }
+  });
+  result.textContent = checks.map(check => `${check.passed ? "PASS" : "FAIL"}: ${check.name}${check.error ? ` — ${check.error}` : ""}`).join("\n");
+  result.dataset.passed = String(checks.every(check => check.passed));
+  window.composerBoundaryResults = checks;
+</script>

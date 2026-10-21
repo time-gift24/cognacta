@@ -1,0 +1,31 @@
+[package]
+name = "cognacta-cli"
+description = "CLI binary of the cognacta workspace"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = []
+cognacta-test = ["dep:async-trait", "dep:cognacta-provider", "dep:futures-util", "dep:reqwest", "dep:rustls", "dep:rustls-platform-verifier", "dep:tokio"]
+
+[dependencies]
+async-trait = { workspace = true, optional = true }
+cognacta-collector.workspace = true
+tracing.workspace = true
+clap = { workspace = true, features = ["derive"] }
+cognacta-core.workspace = true
+cognacta-provider = { workspace = true, optional = true }
+futures-util = { workspace = true, optional = true }
+reqwest = { workspace = true, optional = true }
+rustls = { workspace = true, optional = true }
+rustls-platform-verifier = { workspace = true, optional = true }
+thiserror.workspace = true
+tokio = { workspace = true, optional = true }
+
+[dev-dependencies]
+opentelemetry-proto.workspace = true
+prost.workspace = true
+serde_json.workspace = true
+tokio.workspace = true

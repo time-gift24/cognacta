@@ -1,0 +1,110 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "04 · Node error｜节点失败，保留已提交状态",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "legend": {
+      "entries": {
+        "backend": {
+          "label": "业务节点"
+        },
+        "security": {
+          "label": "失败边界"
+        },
+        "messagebus": {
+          "label": "未执行节点"
+        },
+        "external": {
+          "label": "Run 终态"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "execution",
+      "label": "节点执行与输入边界"
+    },
+    {
+      "id": "result",
+      "label": "Run 结算"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "seed",
+      "lane": "execution",
+      "col": 0,
+      "type": "backend",
+      "label": "seed",
+      "sublabel": "输入 ()",
+      "tag": "Δ value = 1",
+      "width": 180,
+      "height": 84
+    },
+    {
+      "id": "fail",
+      "lane": "execution",
+      "col": 2,
+      "type": "security",
+      "label": "fail",
+      "sublabel": "String: seeded",
+      "tag": "返回 Err",
+      "width": 180,
+      "height": 84
+    },
+    {
+      "id": "failed",
+      "lane": "result",
+      "col": 5,
+      "type": "external",
+      "label": "Failed",
+      "sublabel": "node=fail · value=1",
+      "tag": "Run 终态 · exit 1",
+      "width": 180,
+      "height": 84
+    }
+  ],
+  "edges": [
+    {
+      "id": "seed-fail",
+      "from": "seed",
+      "to": "fail",
+      "label": "Goto",
+      "variant": "emphasis"
+    },
+    {
+      "id": "fail-failed",
+      "from": "fail",
+      "to": "failed",
+      "label": "NodeExecution",
+      "role": "error",
+      "variant": "security"
+    }
+  ],
+  "mainPath": [
+    "seed",
+    "fail",
+    "failed"
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "验证什么",
+      "items": [
+        "seed 的 value=1 已提交；后续节点返回错误。",
+        "Scheduler 标记 Failed，并保留失败节点和此前状态。"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "CLI 可观察结果",
+      "items": [
+        "stdout: status=failed node=fail value=1",
+        "stderr 输出受控错误分类；进程以非零状态退出。"
+      ]
+    }
+  ]
+}

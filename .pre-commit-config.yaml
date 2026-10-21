@@ -1,0 +1,75 @@
+# prek configuration (https://prek.j178.dev)
+# All hooks are `local` so the suite runs fully offline — no hook repos to clone.
+# Install once with: prek install
+repos:
+  - repo: local
+    hooks:
+      # ------------------------------------------------------------------
+      # Rust: formatting must stay STABLE — check-only mode, pinned via
+      # rust-toolchain.toml (1.98.1) + rustfmt.toml. Never auto-fix here,
+      # so re-running hooks cannot introduce unrelated diff churn.
+      # ------------------------------------------------------------------
+      - id: cargo-fmt
+        name: cargo fmt (stable check)
+        entry: cargo fmt --all -- --check
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      - id: cargo-check
+        name: cargo check
+        entry: cargo check --workspace --all-targets --all-features --locked
+        language: system
+        types: [rust]
+        files: '\.(rs|toml)$'
+        pass_filenames: false
+
+      - id: cargo-clippy
+        name: cargo clippy
+        entry: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+        language: system
+        types: [rust]
+        files: '\.(rs|toml)$'
+        pass_filenames: false
+
+      - id: cargo-deny
+        name: cargo deny (licenses/advisories/bans/sources)
+        # --disable-fetch: deterministic, works offline. Refresh the
+        # advisory database periodically with `cargo deny fetch`.
+        entry: cargo deny check --disable-fetch
+        language: system
+        files: '^(Cargo\.toml|Cargo\.lock|deny\.toml)$'
+        pass_filenames: false
+
+      # ------------------------------------------------------------------
+      # Generic file hygiene
+      # ------------------------------------------------------------------
+      - id: trailing-whitespace
+        name: no trailing whitespace
+        entry: bash -c 'bad=0; for f do grep -nI "[[:blank:]]$" "$f" && bad=1; done; exit $bad' --
+        language: system
+        types: [text]
+
+      - id: end-of-file
+        name: single trailing newline at EOF
+        entry: bash -c 'bad=0; for f do [ -s "$f" ] && [ -n "$(tail -c 1 "$f")" ] && { echo "missing EOF newline in $f"; bad=1; }; done; exit $bad' --
+        language: system
+        types: [text]
+
+      - id: merge-conflict-markers
+        name: no merge conflict markers
+        entry: bash -c 'bad=0; for f do grep -nE "^(<<<<<<<|=======|>>>>>>>)" "$f" && bad=1; done; exit $bad' --
+        language: system
+        types: [text]
+
+      - id: check-added-large-files
+        name: no files over 1 MiB
+        entry: bash -c 'bad=0; for f do s=$(stat -f%z "$f" 2>/dev/null || stat -c%s "$f"); [ "$s" -gt 1048576 ] && { echo "$f ($s bytes) exceeds 1 MiB"; bad=1; }; done; exit $bad' --
+        language: system
+        pass_filenames: true
+
+      - id: check-toml
+        name: TOML syntax
+        entry: python3 -c 'import sys,tomllib; [tomllib.load(open(f,"rb")) for f in sys.argv[1:]]'
+        language: system
+        types: [toml]

@@ -1,0 +1,111 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Frontend adapter injection regression</title>
+<style>#fixture { display: flex; height: 700px; } section { width: 50%; min-width: 0; } #workbench { height: 200px; }</style>
+<div id="fixture"><section id="web"></section><section id="desktop"></section></div>
+<div id="workbench"></div>
+<pre id="result">Running…</pre>
+<script type="module">
+  import React from "react";
+  import { createRoot } from "react-dom/client";
+  import { flushSync } from "react-dom";
+  import "/src/index.css";
+  import { createTestDependencies, withDependencies } from "/tests/support.tsx";
+  import { ChatScreen } from "/src/components/chat/chat-screen.tsx";
+  import { FilesView, FileView } from "/src/components/workbench/files-view.tsx";
+
+  const result = document.querySelector("#result");
+  const assert = (condition, message) => { if (!condition) throw new Error(message); };
+  const until = async (condition, message) => {
+    const deadline = performance.now() + 5000;
+    while (!condition() && performance.now() < deadline) await new Promise(resolve => setTimeout(resolve, 10));
+    assert(condition(), message);
+  };
+  const copies = [[], []];
+  const requests = [[], []];
+  const roots = [];
+  const dependencies = ["web-a", "desktop-b"].map((backendId, index) => createTestDependencies({
+    backendId,
+    models: { async list() { return [{ id: `${backendId}-model`, label: `${backendId} model` }]; } },
+    host: {
+      async copyText(text) { copies[index].push(text); },
+      async openExternal() {},
+      async confirm() { return true; },
+    },
+    gatewayFor: threadId => ({
+      abort() {},
+      async *stream(request) {
+        requests[index].push({ threadId, request });
+        const metadata = { providerName: backendId, protocolName: "test", requestedModel: request.model };
+        yield { type: "completed", response: {
+          assistant: { parts: [{ type: "text", text: `${backendId} reply` }] },
+          finish: { reason: "stop" }, usage: {}, metadata,
+        } };
+      },
+    }),
+  }));
+
+  try {
+    for (const [index, id] of ["web", "desktop"].entries()) {
+      const scope = document.getElementById(id);
+      const root = createRoot(scope);
+      roots.push(root);
+      const models = await dependencies[index].models.list();
+      flushSync(() => root.render(withDependencies(React.createElement(ChatScreen, {
+        threadId: "same-thread", models, suggestions: [],
+      }), dependencies[index])));
+      assert(scope.querySelector('[aria-label^="选择模型"]')?.textContent.includes(models[0].label), "Shared UI must display its injected model catalog");
+      flushSync(() => dependencies[index].threads.get("same-thread").updateDraft({ text: `request-${index}` }));
+      flushSync(() => scope.querySelector('[aria-label="发送"]').click());
+      await until(() => scope.textContent.includes(`${dependencies[index].backendId} reply`), "Shared UI must render its own gateway response");
+      flushSync(() => scope.querySelector('[data-slot="message-footer"] button').click());
+      await until(() => copies[index].length === 1, "Copy must use the injected host");
+      assert(requests[index][0].request.model === models[0].id && requests[index][0].threadId === "same-thread", "Gateway must receive the injected model and thread identity");
+    }
+    assert(dependencies[0].threads.get("same-thread") !== dependencies[1].threads.get("same-thread"), "Same thread IDs on different backends must not share a cache entry");
+    assert(!document.querySelector("#web").textContent.includes("desktop-b reply") && !document.querySelector("#desktop").textContent.includes("web-a reply"), "Responses must remain in their own UI");
+    const skill = [{ id: "same", files: [{ path: "SKILL.md" }] }];
+    await dependencies[0].skillDrafts.save("same", "SKILL.md", "web draft");
+    assert(Object.keys(await dependencies[1].skillDrafts.load(skill)).length === 0, "Injected cache implementations must remain isolated");
+
+    const fixture = document.querySelector("#workbench");
+    const root = createRoot(fixture);
+    roots.push(root);
+    let releaseOld;
+    const calls = [];
+    const backend = {
+      async listRecommendations() { return []; },
+      async listWorkspaceFiles(scope) { calls.push(scope); return [{ name: scope.workspaceId, path: "same.ts", size: "1 B" }]; },
+      readFilePreview(scope, path) {
+        return scope.workspaceId === "old" ? new Promise(resolve => { releaseOld = resolve; }) : Promise.resolve({ path, lines: [scope.workspaceId] });
+      },
+      async getChangeSet() { return { fileCount: 0, added: 0, removed: 0, files: [] }; },
+    };
+    const render = (View, source, workspaceId) => flushSync(() => root.render(React.createElement(View, {
+      backend: source, scope: { workspaceId, workspacePath: `/fake/${workspaceId}`, sessionId: "same-session" }, path: "same.ts", onOpenFile() {},
+    })));
+    render(FilesView, backend, "web-workspace");
+    await until(() => fixture.textContent.includes("web-workspace"), "Workspace list must load its explicit scope");
+    render(FilesView, backend, "desktop-workspace");
+    await until(() => fixture.textContent.includes("desktop-workspace"), "Changing workspace must invalidate the previous view");
+    assert(calls.length === 2 && calls[1].sessionId === "same-session" && calls[1].workspacePath === "/fake/desktop-workspace", "Each scope and resolved workspace path must reach the adapter");
+    render(FileView, backend, "old");
+    await until(() => releaseOld, "Old preview must start loading");
+    render(FileView, backend, "new");
+    await until(() => fixture.textContent.includes("new"), "Same path on a new scope must load new content");
+    releaseOld({ path: "same.ts", lines: ["stale content"] });
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert(!fixture.textContent.includes("stale content"), "Late responses from the old scope must not overwrite the new view");
+    const replacement = { ...backend, async readFilePreview(_scope, path) { return { path, lines: ["replacement adapter"] }; } };
+    render(FileView, replacement, "new");
+    await until(() => fixture.textContent.includes("replacement adapter"), "Replacing only the adapter must reload the same scope/path");
+    result.dataset.passed = "true";
+    result.textContent = "PASS: two backend adapters share unchanged Chat UI with isolated models, gateways, hosts and caches; Workbench scope, adapter replacement and late-response isolation";
+  } catch (error) {
+    result.dataset.passed = "false";
+    result.textContent = `FAIL: ${error.stack ?? error.message}`;
+    throw error;
+  } finally {
+    for (const root of roots) root.unmount();
+  }
+</script>

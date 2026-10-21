@@ -1,0 +1,256 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Composer regression check</title>
+<!-- Run npm run dev, then open /tests/composer.browser.html. No backend required. -->
+<div id="fixture"></div>
+<pre id="result">Running…</pre>
+<script type="module">
+  import React from "react";
+  import { createRoot } from "react-dom/client";
+  import { flushSync } from "react-dom";
+  import "/src/index.css";
+  import { ChatComposer } from "/src/components/chat/chat-composer.tsx";
+  import { ChatScreen } from "/src/components/chat/chat-screen.tsx";
+  import { AgentChatComposer } from "/src/components/premium/agent-chat-input/composer.tsx";
+  import { AgentChatCredits } from "/src/components/premium/agent-chat-input/agent-chat-credits.tsx";
+  import { createTestDependencies, withDependencies } from "/tests/support.tsx";
+  import { DEMO_MODELS } from "/src/adapters/demo/resources.ts";
+  import { ThreadStoreImpl } from "/src/chat/thread-store.ts";
+
+  const fixture = document.querySelector("#fixture");
+  const result = document.querySelector("#result");
+  const root = createRoot(fixture);
+  let dependencies = createTestDependencies();
+  const render = element => root.render(withDependencies(element, dependencies));
+  const assert = (condition, message) => {
+    if (!condition) throw new Error(message);
+  };
+  const editor = () => fixture.querySelector('[role="textbox"]');
+  const sendButton = () => fixture.querySelector('button[aria-label="发送"]');
+  const wait = (ms = 0) => new Promise(resolve => setTimeout(resolve, ms));
+  const until = async (condition, message) => {
+    const deadline = performance.now() + 5000;
+    while (!condition() && performance.now() < deadline) await wait(10);
+    assert(condition(), message);
+  };
+  const click = element => flushSync(() => element.click());
+  const modelButton = () => fixture.querySelector('button[aria-label^="选择模型"]') ?? fixture.querySelector('[aria-label="本会话固定模型"]');
+  const selectModel = async (label) => {
+    click(modelButton());
+    await wait();
+    const option = [...document.querySelectorAll('[data-morph-popover-portal]:not([inert]) button')]
+      .find(button => button.textContent === label);
+    assert(option, `Model ${label} must be available`);
+    click(option);
+  };
+  const insert = (text) => flushSync(() => {
+    editor().focus();
+    assert(document.execCommand("insertText", false, text), "Native insertion failed");
+  });
+  const replaceText = (text) => {
+    editor().focus();
+    const range = document.createRange();
+    range.selectNodeContents(editor());
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+    insert(text);
+  };
+  const attach = (file) => flushSync(() => {
+    const input = fixture.querySelector('input[type="file"]');
+    const files = new DataTransfer();
+    files.items.add(file);
+    input.files = files.files;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  const attachmentButtons = () => fixture.querySelectorAll('button[aria-label^="移除附件 "]');
+  const paste = (text) => flushSync(() => {
+    const clipboardData = new DataTransfer();
+    clipboardData.setData("text/plain", text);
+    clipboardData.setData("text/html", "<b>Rich clipboard markup</b>");
+    editor().dispatchEvent(new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }));
+  });
+
+  const originalCreateObjectURL = URL.createObjectURL;
+  try {
+    let accepted = false;
+    let attempts = 0;
+    const sentDrafts = [];
+    const store = new ThreadStoreImpl("test", {
+      abort() {},
+      async *stream() {
+        yield { type: "failed", error: { kind: "unavailable", message: "Fixture response" } };
+      },
+    });
+    const send = store.send;
+    store.send = (text, attachments, model) => {
+      attempts += 1;
+      sentDrafts.push({ text, attachments, model });
+      return accepted ? send(text, attachments, model) : false;
+    };
+    flushSync(() => render(React.createElement(ChatComposer, { store, models: DEMO_MODELS })));
+    const draftFile = new File(["test"], "attachment.txt", { type: "text/plain" });
+    attach(draftFile);
+    assert(sendButton().disabled, "Attachment-only input must not enable send");
+    flushSync(() => editor().dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    assert(attempts === 0 && fixture.textContent.includes("attachment.txt"), "Empty submission must keep attachments");
+    insert("draft");
+    flushSync(() => sendButton().click());
+    assert(attempts === 1 && editor().textContent === "draft" && fixture.textContent.includes("attachment.txt"), "Rejected submission must preserve text and attachments");
+    assert(store.getDraft().text === "draft" && store.getDraft().attachments[0]?.file === draftFile, "Rejected submission must preserve the original draft File");
+    assert(sentDrafts[0].text === "draft" && sentDrafts[0].model === "pine-1" && sentDrafts[0].attachments.length === 1 && sentDrafts[0].attachments[0].name === "attachment.txt" && sentDrafts[0].attachments[0].mediaType === "text/plain" && sentDrafts[0].attachments[0].file === draftFile, "Submission must map the visible draft, attachment metadata and selected model into the store request");
+    accepted = true;
+    // Model native editor input that has not reached the controlled value yet.
+    editor().textContent = "  Latest native input  ";
+    assert(store.getDraft().text === "draft", "The controlled draft must still lag behind the editor for this check");
+    flushSync(() => sendButton().click());
+    assert(sentDrafts[1].text === "Latest native input" && sentDrafts[1].attachments[0].name === "attachment.txt", "Submission must serialize the current editor instead of sending stale controlled text");
+    assert(attempts === 2 && editor().textContent === "", "Accepted submission must clear text");
+    assert(store.getDraft().text === "" && store.getDraft().attachments.length === 0, "Accepted submission must immediately clear both draft fields");
+    // The real store briefly shows Stop until the fixture gateway's failure settles.
+    await wait();
+    // Removed attachment cards can remain briefly while their exit animation finishes.
+    assert(sendButton()?.disabled, "Settled submission must restore the disabled send button for an empty draft");
+
+    const ref = React.createRef();
+    flushSync(() => render(React.createElement(AgentChatComposer, { ref, skills: [], maxLength: 20 })));
+    insert("original");
+    paste(" <b>PASTED</b> extra");
+    const pasted = ref.current.serialize().text;
+    assert(pasted === "original <b>PASTED</" && !editor().querySelector("b"), "Paste must insert plain text within maxLength");
+    flushSync(() => document.execCommand("undo"));
+    assert(ref.current.serialize().text === "original", "Undo must remove only the paste");
+    flushSync(() => document.execCommand("redo"));
+    assert(ref.current.serialize().text === pasted, "Redo must restore the paste");
+    const range = document.createRange();
+    range.selectNodeContents(editor());
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+    paste("replacement");
+    assert(ref.current.serialize().text === "replacement", "Paste must replace the selection at maxLength");
+    flushSync(() => document.execCommand("undo"));
+    assert(ref.current.serialize().text === pasted, "Undo must restore the replaced selection");
+    range.selectNodeContents(editor());
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+    paste("line 1\n\n<html>");
+    assert(ref.current.serialize().text === "line 1\n\n<html>", "Paste must preserve newlines and literal HTML text");
+
+    let submittedText;
+    const creditsProps = { skills: [], maxLength: 5, defaultValue: "oversized", onSubmit: text => { submittedText = text; } };
+    flushSync(() => render(React.createElement(AgentChatCredits, creditsProps)));
+    const creditsSend = () => fixture.querySelector('button[aria-label="Send message"]');
+    assert(editor().textContent === "overs" && !creditsSend().disabled, "Clamped initial text must remain sendable");
+    click(creditsSend());
+    assert(submittedText === "overs", "Submission must match the visible clamped text");
+    flushSync(() => render(React.createElement(AgentChatCredits, { ...creditsProps, maxLength: 3 })));
+    assert(editor().textContent === "ove" && !creditsSend().disabled, "Lowering maxLength must update the submit state");
+    click(creditsSend());
+    assert(submittedText === "ove", "Lowered maxLength must reach the submitted text");
+
+    const requests = [];
+    dependencies = createTestDependencies({ gatewayFor: () => ({
+      async *stream(request) {
+        requests.push(request);
+        yield { type: "failed", error: { kind: "unavailable", message: "Fixture response" } };
+      },
+      abort() {},
+    }) });
+    flushSync(() => render(React.createElement(ChatScreen, { models: DEMO_MODELS })));
+    await selectModel("GPT 5.6");
+    insert("Keep my model");
+    click(sendButton());
+    await wait();
+    assert(requests[0]?.model === "gpt-5.6", "First message must use the selected model");
+    assert(modelButton().textContent === "GPT 5.6", "First submission must preserve the model across the layout change");
+    await until(() => fixture.querySelector('button[aria-label="编辑"]'), "The lazy-loaded thread must expose its message actions");
+    for (let edit = 0; edit < 2; edit += 1) {
+      replaceText(`Unsaved draft ${edit}`);
+      attach(draftFile);
+      assert(attachmentButtons().length === 1, "Editing fixture must have an unsent attachment");
+      click(fixture.querySelector('button[aria-label="编辑"]'));
+      assert(editor().textContent === "Keep my model" && modelButton().textContent === "GPT 5.6", "Repeated editing must replace the draft text and preserve the selected model");
+      await until(() => attachmentButtons().length === 0, "Editing the same old message must clear current attachments every time");
+    }
+    click(sendButton());
+    await wait();
+    assert(requests[1]?.model === "gpt-5.6", "Edited message must use the selected model");
+    assert(!requests[1]?.messages[0].attachments?.length, "Edited submission must not carry the discarded draft attachments");
+
+    flushSync(() => render(null));
+    dependencies.threads.evictIdle();
+    const pending = [];
+    let aborts = 0;
+    dependencies = createTestDependencies({ gatewayFor: () => ({
+      async *stream(request) {
+        requests.push(request);
+        yield await new Promise(resolve => pending.push(resolve));
+      },
+      abort() { aborts += 1; },
+    }) });
+    const previews = [];
+    URL.createObjectURL = (file) => {
+      const url = originalCreateObjectURL.call(URL, file);
+      previews.push({ file, url });
+      return url;
+    };
+    flushSync(() => render(React.createElement(ChatScreen, { models: DEMO_MODELS })));
+    await selectModel("GPT 5.6");
+    const imageFile = new File(['<svg xmlns="http://www.w3.org/2000/svg" width="2" height="2"><rect width="2" height="2" fill="green"/></svg>'], "draft.svg", { type: "image/svg+xml" });
+    insert("Keep this unsent draft");
+    attach(imageFile);
+    const preview = () => fixture.querySelector('img[alt="draft.svg"]');
+    await until(() => preview()?.complete && preview().naturalWidth > 0, "Draft image must have a working preview before sending a suggestion");
+    const previousEditor = editor();
+    const previousPreview = preview().src;
+    click([...fixture.querySelectorAll('button')].find(button => button.textContent === "为什么这次构建这么慢？"));
+    await wait();
+    assert(requests[2]?.model === "gpt-5.6", "Suggested prompts must use the selected model");
+    assert(requests[2]?.messages[0].text === "为什么这次构建这么慢？" && !requests[2].messages[0].attachments?.length, "Suggestion must send only its own text, without the unsent draft attachments");
+    assert(editor() !== previousEditor && editor().textContent === "Keep this unsent draft", "Suggestion must preserve draft text across the empty-to-thread composer remount");
+    await until(() => preview()?.complete && preview().naturalWidth > 0, "Suggestion must preserve the working image preview after the composer remount");
+    assert(preview().src !== previousPreview && previews.find(item => item.url === preview().src)?.file === imageFile, "Remounted preview must retain the original draft File");
+    assert(attachmentButtons().length === 1, "Suggestion must retain the unsent attachment");
+
+    flushSync(() => render(React.createElement(ChatScreen, { models: DEMO_MODELS, key: "other", threadId: "other" })));
+    assert(editor().textContent === "" && attachmentButtons().length === 0 && modelButton().textContent === "Pine 1", "Another conversation must start with its own draft and model");
+    insert("Other conversation draft");
+    await selectModel("Sonnet 5");
+    flushSync(() => render(React.createElement(ChatScreen, { models: DEMO_MODELS, key: "main", threadId: "main" })));
+    assert(editor().textContent === "Keep this unsent draft" && attachmentButtons().length === 1 && modelButton().textContent === "GPT 5.6", "Returning to the running conversation must restore its draft and model");
+    await until(() => preview()?.complete && preview().naturalWidth > 0, "Returning to the running conversation must restore its working image preview");
+    assert(previews.find(item => item.url === preview().src)?.file === imageFile, "Conversation switching must preserve the original draft File");
+    assert(dependencies.threads.get("other").getDraft().text === "Other conversation draft" && dependencies.threads.get("other").getDraft().model === "sonnet-5", "The other conversation must retain its independent draft and model");
+    assert(requests.length === 3 && pending.length === 1 && aborts === 0 && dependencies.threads.get("main").streaming, "Conversation switching must keep only the original suggestion request running");
+
+    flushSync(() => editor().dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true })));
+    replaceText("Next draft while the old request runs");
+    const assertRetainedDraft = (text, action) => {
+      assert(editor().textContent === text && attachmentButtons().length === 1, `${action} must preserve the new draft text and attachment`);
+      assert(previews.find(item => item.url === preview()?.src)?.file === imageFile, `${action} must preserve the draft File preview`);
+    };
+    const failure = { type: "failed", error: { kind: "unavailable", message: "Fixture response" } };
+    pending[0](failure);
+    await until(() => Boolean(sendButton()), "Old request failure must return the composer to ready state");
+    assertRetainedDraft("Next draft while the old request runs", "Old request failure during IME composition");
+    flushSync(() => editor().dispatchEvent(new CompositionEvent("compositionend", { bubbles: true })));
+    click([...fixture.querySelectorAll('button')].find(button => button.textContent.trim() === "重试"));
+    await until(() => pending.length === 2, "Retry must start another request");
+    assert(requests[3]?.messages[0].text === requests[2].messages[0].text && !requests[3].messages[0].attachments?.length && requests[3].model === "gpt-5.6", "Retry must use the old request, not the current draft");
+    assertRetainedDraft("Next draft while the old request runs", "Retry");
+    replaceText("Newer draft during retry");
+    click(fixture.querySelector('button[aria-label="停止生成"]'));
+    assert(aborts === 1, "Stop must abort the old request");
+    assertRetainedDraft("Newer draft during retry", "Stop");
+    pending[1](failure);
+    await wait();
+    assertRetainedDraft("Newer draft during retry", "Late failure from the stopped request");
+    result.textContent = "PASS: attachment gating, atomic draft acceptance/rejection, plain paste, maxLength, undo/redo, model persistence, repeated edits, suggestion draft/File/preview retention across conversation switches, IME and failure/stop/retry draft retention";
+    result.dataset.passed = "true";
+  } catch (error) {
+    result.textContent = `FAIL: ${error.message}`;
+    result.dataset.passed = "false";
+    throw error;
+  } finally {
+    URL.createObjectURL = originalCreateObjectURL;
+  }
+</script>

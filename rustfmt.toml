@@ -1,0 +1,18 @@
+# Stable rustfmt baseline — ONLY stable (non-nightly) options are set here,
+# so `cargo fmt --all -- --check` behaves identically on any machine with
+# the pinned toolchain (see rust-toolchain.toml). Do not add nightly-only
+# options; rustfmt silently ignores them and the check becomes unstable.
+#
+# Reference: https://rust-lang.github.io/rustfmt/
+
+edition = "2024"
+
+# Lines
+max_width = 100
+hard_tabs = false
+tab_spaces = 4
+newline_style = "Unix"
+
+# Shorthands
+use_field_init_shorthand = true
+use_try_shorthand = true

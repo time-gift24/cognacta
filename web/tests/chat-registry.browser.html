@@ -1,0 +1,120 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Thread registry lifecycle regression</title>
+<!-- Run npm run dev, then open /tests/chat-registry.browser.html. -->
+<div id="fixture"></div><pre id="result">Running…</pre>
+<script type="module">
+  import React from "react";
+  import { createRoot } from "react-dom/client";
+  import { flushSync } from "react-dom";
+  import { useThreadStore, useThreadState } from "/src/chat/react.ts";
+  import { createThreadStoreRegistry } from "/src/chat/registry.ts";
+  const result = document.querySelector("#result");
+  const root = createRoot(document.querySelector("#fixture"));
+  const registry = createThreadStoreRegistry(() => ({ abort() {}, stream() { throw new Error("unused"); } }));
+  const assert = (condition, message) => { if (!condition) throw new Error(message); };
+  function Probe({ id, suspend = false }) {
+    const store = useThreadStore(id, registry);
+    useThreadState(store);
+    if (suspend) throw pending;
+    return React.createElement("span", null, id);
+  }
+  const pending = new Promise(() => {});
+  const render = (id, suspend) => flushSync(() => root.render(React.createElement(React.StrictMode, null,
+    React.createElement(React.Suspense, { fallback: "waiting" }, React.createElement(Probe, { id, suspend })),
+  )));
+  try {
+    render("first");
+    registry.evictIdle();
+    assert(registry.snapshot("first"), "Mounted thread must remain retained");
+    render("second");
+    flushSync(() => root.render(null));
+    registry.evictIdle();
+    assert(!registry.snapshot("first") && !registry.snapshot("second"), "StrictMode thread changes must release every reference");
+    render("suspended", true);
+    flushSync(() => root.render(null));
+    registry.evictIdle();
+    assert(!registry.snapshot("suspended"), "An abandoned render must not retain its thread");
+    let suspended = true;
+    let release;
+    let resumedStore;
+    const ready = new Promise(resolve => { release = resolve; });
+    function ResumingProbe() {
+      resumedStore = useThreadStore("resuming", registry);
+      useThreadState(resumedStore);
+      if (suspended) throw ready;
+      return React.createElement("span", null, "resumed");
+    }
+    flushSync(() => root.render(React.createElement(React.StrictMode, null,
+      React.createElement(React.Suspense, { fallback: "waiting" }, React.createElement(ResumingProbe)),
+    )));
+    registry.evictIdle();
+    assert(!registry.snapshot("resuming"), "An uncommitted render may be evicted");
+    suspended = false;
+    release();
+    const deadline = performance.now() + 3000;
+    while (document.querySelector("#fixture").textContent !== "resumed" && performance.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    assert(document.querySelector("#fixture").textContent === "resumed", "Suspended render must resume");
+    assert(registry.get("resuming") === resumedStore, "Resumed render must use the retained store");
+    flushSync(() => root.render(null));
+    registry.evictIdle();
+    assert(!registry.snapshot("resuming"), "Resumed render must release its store");
+    for (const evictFirst of [false, true]) {
+      let created = 0;
+      let mountedStore;
+      const layoutRegistry = createThreadStoreRegistry(() => {
+        created += 1;
+        return { abort() {}, stream() { throw new Error("unused"); } };
+      });
+      function LayoutProbe() {
+        mountedStore = useThreadStore("layout", layoutRegistry);
+        useThreadState(mountedStore);
+        return null;
+      }
+      function LayoutEviction() {
+        React.useLayoutEffect(() => layoutRegistry.evictIdle(), []);
+        return null;
+      }
+      const children = evictFirst
+        ? [React.createElement(LayoutEviction, { key: "evict" }), React.createElement(LayoutProbe, { key: "probe" })]
+        : [React.createElement(LayoutProbe, { key: "probe" }), React.createElement(LayoutEviction, { key: "evict" })];
+      flushSync(() => root.render(React.createElement(React.Fragment, null, ...children)));
+      assert(created === 1, "Layout eviction must retain the rendered store without constructing a replacement");
+      assert(mountedStore === layoutRegistry.get("layout"), "Layout eviction must not split the mounted store from the registry");
+      flushSync(() => root.render(null));
+      layoutRegistry.evictIdle();
+      assert(!layoutRegistry.snapshot("layout"), "Layout-retained store must be released after unmount");
+    }
+    let committedStore;
+    let replacementStore;
+    const replacementRegistry = createThreadStoreRegistry(() => ({ abort() {}, stream() { throw new Error("unused"); } }));
+    function ReplacementProbe() {
+      committedStore = useThreadStore("replacement", replacementRegistry);
+      useThreadState(committedStore);
+      return null;
+    }
+    function ReplaceBeforeRetention() {
+      React.useLayoutEffect(() => {
+        replacementRegistry.evictIdle();
+        replacementStore = replacementRegistry.acquire("replacement");
+      }, []);
+      return null;
+    }
+    flushSync(() => root.render(React.createElement(React.Fragment, null,
+      React.createElement(ReplaceBeforeRetention), React.createElement(ReplacementProbe),
+    )));
+    assert(committedStore === replacementStore, "Commit must re-read a replacement already retained by another consumer");
+    flushSync(() => root.render(null));
+    replacementRegistry.release("replacement");
+    replacementRegistry.evictIdle();
+    assert(!replacementRegistry.snapshot("replacement"), "Replacement reconciliation must release all committed references");
+    result.dataset.passed = "true";
+    result.textContent = "PASS: StrictMode, suspended renders, layout eviction in both orders and retained replacement reconciliation";
+  } catch (error) {
+    result.dataset.passed = "false";
+    result.textContent = `FAIL: ${error.message}`;
+    throw error;
+  } finally { root.unmount(); }
+</script>

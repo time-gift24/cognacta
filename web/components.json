@@ -1,0 +1,45 @@
+{
+  "$schema": "https://ui.shadcn.com/schema.json",
+  "style": "radix-nova",
+  "rsc": false,
+  "tsx": true,
+  "tailwind": {
+    "config": "",
+    "css": "src/index.css",
+    "baseColor": "neutral",
+    "cssVariables": true,
+    "prefix": ""
+  },
+  "iconLibrary": "lucide",
+  "rtl": false,
+  "aliases": {
+    "components": "@/components",
+    "utils": "@/lib/utils",
+    "ui": "@/components/ui",
+    "lib": "@/lib",
+    "hooks": "@/hooks"
+  },
+  "menuColor": "default",
+  "menuAccent": "subtle",
+  "registries": {
+    "@beui": "https://proxy.collectui.pro/api/r/beui/{name}.json",
+    "@beui-pro": {
+      "url": "https://proxy.collectui.pro/api/r/beui/pro/{name}.json",
+      "headers": {
+        "Authorization": "Bearer ${BEUI_PRO_TOKEN}"
+      }
+    },
+    "@reactbits-starter": {
+      "url": "https://proxy.collectui.pro/api/r/reactbits/starter/{name}.json",
+      "headers": {
+        "Authorization": "Bearer ${REACTBITS_LICENSE_KEY}"
+      }
+    },
+    "@reactbits-pro": {
+      "url": "https://proxy.collectui.pro/api/r/reactbits/pro/{name}.json",
+      "headers": {
+        "Authorization": "Bearer ${REACTBITS_LICENSE_KEY}"
+      }
+    }
+  }
+}

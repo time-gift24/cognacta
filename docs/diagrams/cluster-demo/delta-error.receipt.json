@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "deliver",
+  "type": "workflow",
+  "input": "/Users/wanyaozhong/Projects/cognacta/docs/diagrams/cluster-demo/delta-error.workflow.json",
+  "output": "/Users/wanyaozhong/Projects/cognacta/docs/diagrams/cluster-demo/delta-error.html",
+  "specification": {
+    "sha256": "12a3b85336a47a436581997736e60c2dacecb036f717a2f268b9e371fce412d6",
+    "bytes": 2759
+  },
+  "artifact": {
+    "sha256": "84ff08c3ba63d3472829391f23b855e2e978760a5ca3cfa96eafdd292e7ded74",
+    "bytes": 704059
+  },
+  "validation": {
+    "checksPassed": 9,
+    "checkCount": 9,
+    "compositionProfile": "showcase",
+    "compositionStatus": "pass",
+    "errors": 0,
+    "warnings": 0
+  }
+}

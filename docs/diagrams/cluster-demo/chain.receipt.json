@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "deliver",
+  "type": "workflow",
+  "input": "/Users/wanyaozhong/Projects/cognacta/docs/diagrams/cluster-demo/chain.workflow.json",
+  "output": "/Users/wanyaozhong/Projects/cognacta/docs/diagrams/cluster-demo/chain.html",
+  "specification": {
+    "sha256": "df46cab1363acabaa208c728e6797fb102091abde941c9973a29abcdc6eeef53",
+    "bytes": 2198
+  },
+  "artifact": {
+    "sha256": "93d922f1d39fea849671a3c167d6e47f58cdf6fd122cf85d556cbdb719100f93",
+    "bytes": 700597
+  },
+  "validation": {
+    "checksPassed": 9,
+    "checkCount": 9,
+    "compositionProfile": "showcase",
+    "compositionStatus": "pass",
+    "errors": 0,
+    "warnings": 0
+  }
+}

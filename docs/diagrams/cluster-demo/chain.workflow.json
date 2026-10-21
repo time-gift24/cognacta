@@ -1,0 +1,108 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "01 · Chain｜先提交状态，再进入下一节点",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "legend": {
+      "entries": {
+        "backend": {
+          "label": "业务节点"
+        },
+        "security": {
+          "label": "失败边界"
+        },
+        "messagebus": {
+          "label": "未执行节点"
+        },
+        "external": {
+          "label": "Run 终态"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "execution",
+      "label": "节点执行与输入边界"
+    },
+    {
+      "id": "result",
+      "label": "Run 结算"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "count",
+      "lane": "execution",
+      "col": 0,
+      "type": "backend",
+      "label": "count",
+      "sublabel": "String: hello",
+      "tag": "Δ length = 5",
+      "width": 180,
+      "height": 84
+    },
+    {
+      "id": "render",
+      "lane": "execution",
+      "col": 2,
+      "type": "backend",
+      "label": "render",
+      "sublabel": "usize: 5",
+      "tag": "Δ output = len=5",
+      "width": 180,
+      "height": 84
+    },
+    {
+      "id": "completed",
+      "lane": "result",
+      "col": 5,
+      "type": "external",
+      "label": "Completed",
+      "sublabel": "Run 终态 · exit 0",
+      "width": 180,
+      "height": 84
+    }
+  ],
+  "edges": [
+    {
+      "id": "count-render",
+      "from": "count",
+      "to": "render",
+      "label": "Goto · 5",
+      "variant": "emphasis"
+    },
+    {
+      "id": "render-completed",
+      "from": "render",
+      "to": "completed",
+      "label": "Finish",
+      "variant": "emphasis"
+    }
+  ],
+  "mainPath": [
+    "count",
+    "render",
+    "completed"
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "验证什么",
+      "items": [
+        "count 计算字符数；render 读取已提交的 length。",
+        "每步先 apply_delta，再执行 Goto 或 Finish。"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "运行结果",
+      "items": [
+        "status=completed length=5 output=len=5",
+        "箭头表示节点返回的 Control；Completed 是终态。"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,60 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Popover viewport regression check</title>
+<!-- Run npm run dev, then open /tests/popover-viewport.browser.html. -->
+<div id="fixture"></div>
+<pre id="result">Running…</pre>
+<script type="module">
+  import React from "react";
+  import { createRoot } from "react-dom/client";
+  import { flushSync } from "react-dom";
+  import "/src/index.css";
+  import { MorphPopover, MorphPopoverTrigger, MorphPopoverContent } from "/src/components/motion/popover-morph.tsx";
+
+  const result = document.querySelector("#result");
+  const wait = (ms = 20) => new Promise(resolve => setTimeout(resolve, ms));
+  const assert = (condition, message) => { if (!condition) throw new Error(message); };
+  const until = async (condition, message, timeout = 5000) => {
+    const deadline = performance.now() + timeout;
+    while (!condition() && performance.now() < deadline) await wait();
+    assert(condition(), message);
+  };
+
+  try {
+    if (location.search) {
+      const root = createRoot(document.querySelector("#fixture"));
+      flushSync(() => root.render(React.createElement("div", { style: { position: "fixed", left: 300, top: 180 } },
+        React.createElement(MorphPopover, { defaultOpen: true },
+          React.createElement(MorphPopoverTrigger, null, React.createElement("button", null, "Choose")),
+          React.createElement(MorphPopoverContent, { align: "start", side: "bottom", className: "w-44 h-32" }, "Panel"),
+        ),
+      )));
+      await until(() => document.querySelector('[data-morph-popover-portal]')?.style.visibility === "visible", "Popover did not mount");
+    } else {
+      const frame = document.createElement("iframe");
+      frame.width = 1100;
+      frame.height = 844;
+      frame.title = "Popover resize regression";
+      frame.src = `${location.pathname}?fixture`;
+      document.querySelector("#fixture").append(frame);
+      await until(() => frame.contentDocument?.querySelector("#result")?.dataset.passed === "true", "Fixture did not mount", 30000);
+      const panel = () => frame.contentDocument.querySelector('[data-morph-popover-portal]');
+      await wait(500);
+      assert(Math.round(panel().getBoundingClientRect().left) === 300, "Initial panel did not align with fixed trigger");
+      frame.width = 390;
+      await until(() => panel().getBoundingClientRect().right <= frame.contentWindow.innerWidth - 11, "Panel overflowed the viewport after width shrank");
+      await wait(500);
+      frame.height = 300;
+      await until(() => panel().getBoundingClientRect().bottom < 180, "Panel did not move above trigger when viewport height shrank");
+      frame.width = 1100;
+      frame.height = 844;
+      await until(() => Math.round(panel().getBoundingClientRect().left) === 300 && panel().getBoundingClientRect().top > 180, "Panel did not return to preferred side after viewport expanded");
+    }
+    result.textContent = "PASS: popover clamps and flips when only viewport dimensions change";
+    result.dataset.passed = "true";
+  } catch (error) {
+    result.textContent = `FAIL: ${error.message}`;
+    result.dataset.passed = "false";
+    throw error;
+  }
+</script>

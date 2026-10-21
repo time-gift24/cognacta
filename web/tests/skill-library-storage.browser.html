@@ -1,0 +1,44 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Skill library IndexedDB regression</title>
+<pre id="result">Running…</pre>
+<script type="module">
+  import { createBrowserSkillLibrary } from "/src/adapters/browser-skill-library.ts"
+  const result = document.querySelector("#result")
+  const assert = (condition, message) => { if (!condition) throw new Error(message) }
+  const source = { async list() { return [] } }
+  const drafts = { async load() { return {} }, async save() {}, async remove() {} }
+  const namespace = "browser-regression-skill-library"
+  const create = (id = namespace) => createBrowserSkillLibrary(id, source, drafts)
+  const checks = []
+  try {
+    const library = create()
+    for (const skill of await library.list()) await library.deleteSkill(skill.id)
+    const created = await library.create({ name: "二进制持久化" })
+    await library.createDirectory(created.id, "empty")
+    await library.createDirectory(created.id, "assets")
+    await library.writeFile(created.id, "assets/data.bin", new Blob([new Uint8Array([0, 255, 128, 13, 10])], { type: "application/octet-stream" }))
+    const reopened = create()
+    const bytes = new Uint8Array(await (await reopened.readFile(created.id, "assets/data.bin")).arrayBuffer())
+    assert(bytes.join(",") === "0,255,128,13,10", "IndexedDB must preserve binary bytes")
+    assert((await reopened.get(created.id)).entries.some(entry => entry.path === "empty" && entry.kind === "folder"), "Empty directories must survive reopen")
+    checks.push("Real IndexedDB retains binary file bytes and empty directories across adapter instances")
+    assert((await create(`${namespace}-other`).list()).length === 0, "Identities must not share packages")
+    checks.push("Different identities cannot read each other's packages")
+    await reopened.writeFile(created.id, "SKILL.md", new Blob(["修改后的正文"]), { replace: true })
+    assert(await (await create().readFile(created.id, "SKILL.md")).text() === "修改后的正文", "Text replacement must persist")
+    checks.push("Explicit replacements persist full contents")
+    const unavailable = createBrowserSkillLibrary("unavailable", source, drafts, { getIndexedDB() { throw new Error("Storage denied") } })
+    let failed = false
+    try { await unavailable.list() } catch (error) { failed = error.code === "storage" }
+    assert(failed, "Storage denial must reject, not claim success")
+    checks.push("Storage denial is surfaced to the caller")
+    // Keep this isolated package for the browser runner's actual page-reload check.
+    window.skillLibraryRegression = { create, id: created.id }
+    result.dataset.status = "passed"
+    result.textContent = `PASS\n${checks.join("\n")}`
+  } catch (error) {
+    result.dataset.status = "failed"
+    result.textContent = `FAIL: ${error.stack}`
+  }
+</script>

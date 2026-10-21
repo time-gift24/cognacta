@@ -1,0 +1,185 @@
+<!doctype html>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Desktop titlebar regression</title>
+<!-- Run at 1280px and 390px with ?platform=macos/windows/browser; add &preview for screenshots. -->
+<div id="fixture"></div>
+<pre id="result" style="position:fixed;bottom:0;left:0;z-index:100;max-width:100%;white-space:pre-wrap;background:Canvas;color:CanvasText;font-size:11px">Running…</pre>
+<script type="module">
+  import React from "react"
+  import { createRoot } from "react-dom/client"
+  import { flushSync } from "react-dom"
+  import "/src/index.css"
+  import { App } from "/src/App.tsx"
+  import { WindowFrame } from "/src/components/window-frame.tsx"
+  import { createDemoAgentSource } from "/src/adapters/demo/resources.ts"
+  import { createTestDependencies, withTestTheme } from "/tests/support.tsx"
+
+  const query = new URLSearchParams(location.search)
+  const platform = query.get("platform") ?? "macos"
+  const fixture = document.querySelector("#fixture")
+  const result = document.querySelector("#result")
+  const root = createRoot(fixture)
+  const calls = []
+  let fail = false
+  const nativeWindow = platform === "browser" ? undefined : {
+    platform,
+    ...Object.fromEntries(["minimize", "toggleMaximize", "close"].map(method => [method, async () => {
+      calls.push(method)
+      if (fail) throw new Error("SECRET native failure")
+    }])),
+  }
+  const assert = (value, message) => { if (!value) throw new Error(message) }
+  const until = async (predicate, message) => {
+    const deadline = performance.now() + 7000
+    while (!predicate() && performance.now() < deadline)
+      await new Promise(resolve => setTimeout(resolve, 20))
+    assert(predicate(), typeof message === "function" ? message() : message)
+  }
+  const visible = element => element && element.getClientRects().length > 0 &&
+    !element.closest('[inert], [hidden], [aria-hidden="true"]') && getComputedStyle(element).visibility !== "hidden"
+  const label = element => {
+    if (element.hasAttribute("aria-label")) return element.getAttribute("aria-label")
+    const copy = element.cloneNode(true)
+    copy.querySelectorAll('[aria-hidden="true"], [hidden]').forEach(node => node.remove())
+    return copy.textContent.trim()
+  }
+  const button = (name, scope = document) => [...scope.querySelectorAll("button")]
+    .find(node => visible(node) && label(node) === name)
+  const click = node => {
+    assert(visible(node) && !node.disabled, "Expected an enabled visible control")
+    flushSync(() => node.click())
+  }
+  const header = () => fixture.querySelector("header")
+  const titlebar = () => fixture.querySelector('[data-slot="desktop-titlebar"]')
+  const currentTitle = () => {
+    const current = header()?.querySelector('ol > li[aria-current="page"]')
+    return current ? label(current) : ""
+  }
+  const hitTarget = element => {
+    const bounds = element.getBoundingClientRect()
+    return document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
+  }
+  const checkHit = (element, message) => {
+    assert(element.contains(hitTarget(element)), `${message}; hit ${hitTarget(element)?.outerHTML.slice(0, 300)}`)
+  }
+  const dismissNavigation = async () => {
+    const drawer = document.querySelector('[data-mobile="true"][aria-hidden="false"]')
+    if (drawer) {
+      click(button("Close sidebar"))
+      await until(() => drawer.getAttribute("aria-hidden") === "true", "Mobile navigation must close")
+    }
+  }
+  const openSection = async name => {
+    await dismissNavigation()
+    click(button(name, fixture.querySelector('nav[aria-label="工作区导航区域"]')))
+  }
+  const checkHeader = () => {
+    assert(fixture.querySelectorAll("header").length === 1, "Every view must have exactly one shared Header")
+    const bounds = header().getBoundingClientRect()
+    assert(bounds.left >= -1 && bounds.right <= innerWidth + 1, "Header must fit the window")
+    if (nativeWindow) {
+      const bar = titlebar()
+      const frame = bar.getBoundingClientRect()
+      assert(bar.contains(header()) && !bar.nextElementSibling.querySelector("header"), "Desktop Header belongs to the titlebar without a duplicate in the content")
+      assert(Math.abs(frame.top) <= 1 && Math.abs(frame.left) <= 1 && Math.abs(frame.width - innerWidth) <= 1, "Native titlebar must span the window top")
+      assert(bounds.top >= frame.top - 1 && bounds.bottom <= frame.bottom + 1, "Shared Header must fit inside the native titlebar")
+      assert(fixture.querySelector("[data-rail-state]").getBoundingClientRect().top >= frame.bottom - 1, "Navigation rail must begin below the titlebar")
+      if (platform === "macos") {
+        assert(parseFloat(getComputedStyle(bar).paddingLeft) >= 84 && bounds.left >= 84, "macOS must reserve the native traffic-light area")
+        assert(!bar.querySelector(".window-control"), "macOS must use native window controls")
+      } else {
+        const controls = bar.querySelectorAll(".window-control")
+        assert(controls.length === 3, "Windows must expose exactly three window controls")
+        const left = controls[0].getBoundingClientRect().left
+        assert(bounds.right <= left + 1, "Long Header content must not cover Windows controls")
+        for (const control of controls) {
+          const rectangle = control.getBoundingClientRect()
+          assert(rectangle.right <= innerWidth + 1 && rectangle.top >= -1 && rectangle.width >= 40, "Window controls must remain fully visible")
+          checkHit(control, "Window controls must remain clickable under long titles")
+        }
+      }
+    } else {
+      assert(!titlebar() && !fixture.querySelector(".window-control"), "Browser mode must retain its content Header without desktop controls")
+      assert(header().closest('[data-slot="sidebar-rail-workspace-header"]') === null && fixture.contains(header()), "Browser Header must stay inside the application content")
+    }
+  }
+
+  try {
+    assert(["macos", "windows", "browser"].includes(platform), "Use platform=macos, windows or browser")
+    const agents = createDemoAgentSource()
+    const first = (await agents.load()).agents[0]
+    const longName = "验证窄屏桌面窗口中的很长 Agent 名称始终截断并保留所有窗口控制按钮".repeat(2)
+    await agents.save(first.id, { ...first.configuration, name: longName })
+    const dependencies = createTestDependencies({ agents })
+    flushSync(() => root.render(withTestTheme(
+      React.createElement(WindowFrame, { window: nativeWindow }, React.createElement(App)), dependencies
+    )))
+    await until(() => header() && button("收起工作台"), "App must load its shared Header")
+    const workbench = fixture.querySelector('aside[aria-label="工作台"]')
+    const closeWorkbench = button("收起工作台")
+    await until(() => closeWorkbench.contains(hitTarget(closeWorkbench)), () => `Default workbench toolbar must be clickable; hit ${hitTarget(closeWorkbench)?.outerHTML.slice(0, 300)}`)
+    if (nativeWindow) assert(workbench.getBoundingClientRect().top >= titlebar().getBoundingClientRect().bottom - 1, "Default workbench must begin below the native titlebar")
+    checkHit(closeWorkbench, "Default workbench close control must be clickable")
+    click(closeWorkbench)
+    await until(() => !header().closest("[inert]") && workbench.getBoundingClientRect().width <= 1, "Closing workbench must finish its transition and enable the Header")
+    checkHeader()
+
+    if (nativeWindow && innerWidth < 768) {
+      click(button("展开导航", header()))
+      const mobileSheet = () => document.querySelector('[data-mobile="true"][aria-hidden="false"]')
+      await until(mobileSheet, "Narrow navigation must open its mobile sheet")
+      assert(mobileSheet().getBoundingClientRect().top >= titlebar().getBoundingClientRect().bottom - 1, "Mobile navigation must begin below the native titlebar")
+      if (platform === "windows") {
+        for (const control of titlebar().querySelectorAll(".window-control"))
+          checkHit(control, "Open mobile navigation must leave Windows controls clickable")
+      }
+      await dismissNavigation()
+    }
+
+    if (platform === "windows") {
+      for (const [name, method] of [["最小化", "minimize"], ["最大化或还原", "toggleMaximize"], ["关闭窗口", "close"]]) {
+        const before = calls.length
+        click(button(name, titlebar()))
+        await until(() => calls.length === before + 1, `${name} must reach the host once`)
+        assert(calls.at(-1) === method, `${name} must route to ${method}`)
+      }
+      fail = true
+      click(button("最小化", titlebar()))
+      await until(() => titlebar().querySelector('[role="alert"]'), "Window failures must show feedback")
+      assert(titlebar().querySelector('[role="alert"]').textContent === "窗口操作未能完成，请重试。" && !fixture.textContent.includes("SECRET"), "Window failures must show only a safe message")
+      fail = false
+      const before = calls.length
+      click(button("最小化", titlebar()))
+      await until(() => calls.length === before + 1 && !titlebar().querySelector('[role="alert"]'), "A failed window operation must be retryable")
+    } else assert(calls.length === 0, "Native macOS and browser modes must not invoke fake controls")
+
+    await openSection("设置")
+    await dismissNavigation()
+    await until(() => currentTitle() === "偏好设置", "Settings must update the same Header")
+    assert(header().textContent.includes("设置") && !header().querySelector("h1"), "Settings Header must replace the previous page title")
+    checkHeader()
+
+    await openSection("Agent")
+    await until(() => button(longName), "Agent navigation must expose the long-name fixture")
+    click(button(longName))
+    await dismissNavigation()
+    await until(() => currentTitle() === longName && button("编辑"), "Agent toolbar must update the same Header")
+    assert(header().querySelector("h1")?.textContent === longName, "Agent toolbar title must be portaled into the shared Header")
+    const actions = [...fixture.querySelectorAll('[data-slot="document-actions"]')].find(visible)
+    assert(actions && !header().contains(actions) && actions.getBoundingClientRect().top >= header().getBoundingClientRect().bottom - 1, "Agent document actions must remain below the Header")
+    checkHeader()
+    click(button("编辑", actions))
+    await until(() => button("保存", actions) && button("撤销", actions), "Agent editing actions must remain available below the Header")
+    assert(currentTitle() === longName, "Switching Agent toolbar state must preserve the titlebar title")
+    checkHeader()
+    result.textContent = `PASS: ${platform} titlebar placement, single Header, controls/failure/retry, settings/Agent toolbar and long-title layout (${innerWidth}px)`
+    result.dataset.status = "passed"
+  } catch (error) {
+    result.textContent = `FAIL: ${platform}: ${error.stack ?? error}`
+    result.dataset.status = "failed"
+    console.error(error)
+  } finally {
+    if (!query.has("preview")) root.unmount()
+  }
+</script>

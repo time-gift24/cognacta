@@ -1,0 +1,157 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Desktop approval regression check</title>
+<style>
+  body { margin: 0; }
+  #fixture { position: fixed; bottom: 24px; left: 50%; width: min(736px, calc(100vw - 32px)); transform: translateX(-50%); }
+  #result { padding: 16px; white-space: pre-wrap; }
+</style>
+<div id="fixture"></div>
+<pre id="result">Running…</pre>
+<script type="module">
+  import React from "react";
+  import { createRoot } from "react-dom/client";
+  import { flushSync } from "react-dom";
+  import "/src/index.css";
+  import { ChatComposer } from "/src/components/chat/chat-composer.tsx";
+  import { createTestDependencies, withDependencies } from "/tests/support.tsx";
+
+  const fixture = document.querySelector("#fixture");
+  const result = document.querySelector("#result");
+  const root = createRoot(fixture);
+  const wait = (ms = 0) => new Promise(resolve => setTimeout(resolve, ms));
+  const assert = (value, message) => { if (!value) throw new Error(message); };
+  const until = async (condition, message) => {
+    const end = performance.now() + 3000;
+    while (!condition() && performance.now() < end) await wait(10);
+    assert(condition(), message);
+  };
+  const listeners = new Set();
+  let snapshot = { simulated: true, task: null, browserRequest: 0, browser: { url: "about:blank", title: "", status: "empty", canGoBack: false, canGoForward: false } };
+  const publish = (patch) => flushSync(() => {
+    snapshot = { ...snapshot, ...patch };
+    for (const listener of listeners) listener();
+  });
+  const approval = (id = "approval-1") => ({ id, callId: id, title: "打开并查看网页", description: "Agent 准备打开目标网页，读取页面上公开的内容。", targetUrl: "https://example.com/product/research", toolName: "browser.inspect", parameters: '{"url":"https://example.com/product/research"}', code: 'await page.goto("https://example.com/product/research");' });
+  const task = (id = "approval-1") => ({ runId: "run-1", threadId: "owner", title: "查看网页", phase: "awaiting-approval", approval: approval(id) });
+  const decisions = [];
+  let settleDecision;
+  let finishStop;
+  let stopCalls = 0;
+  let sendCalls = 0;
+  const runtime = {
+    getState: () => snapshot,
+    subscribe: listener => { listeners.add(listener); return () => listeners.delete(listener); },
+    async decide(decision) {
+      decisions.push(decision);
+      publish({ task: { ...snapshot.task, phase: "submitting" } });
+      await new Promise((resolve, reject) => { settleDecision = { resolve, reject }; });
+      if (snapshot.task?.runId === decision.runId && snapshot.task?.approval?.id === decision.approvalId && snapshot.task.phase !== "stopping") publish({ task: { ...snapshot.task, phase: "running", approval: undefined } });
+    },
+    async stop() {}, async navigate() {}, async back() {}, async forward() {}, async reload() {},
+  };
+  const makeStore = threadId => {
+    let draft = { text: "保留这段未发送草稿", attachments: [] };
+    const draftListeners = new Set();
+    return {
+      getState: () => ({ threadId, status: "ready" }), subscribe: () => () => {},
+      getDraft: () => draft,
+      subscribeDraft: listener => { draftListeners.add(listener); return () => draftListeners.delete(listener); },
+      updateDraft(patch) { draft = { ...draft, ...patch }; for (const listener of draftListeners) listener(); },
+      send() { sendCalls++; return true; },
+      stop() {
+        stopCalls++;
+        publish({ task: { ...snapshot.task, phase: "stopping" } });
+        finishStop = () => publish({ task: null });
+      },
+    };
+  };
+  const owner = makeStore("owner");
+  const other = makeStore("other");
+  const dependencies = createTestDependencies({ desktop: runtime });
+  const render = store => flushSync(() => root.render(withDependencies(React.createElement(ChatComposer, { key: store.getState().threadId, store, models: [{ id: "test", label: "Test model" }] }), dependencies)));
+  const panel = () => fixture.querySelector('[data-slot="approval-panel"]');
+  const composer = () => fixture.querySelector('.chat-composer-shell');
+  const editor = () => fixture.querySelector('[contenteditable="true"]');
+  const button = text => [...fixture.querySelectorAll("button")].find(node => node.textContent.trim() === text || node.getAttribute("aria-label") === text);
+  const click = text => { const target = button(text); assert(target, `Missing ${text}`); flushSync(() => target.click()); };
+  const reason = () => fixture.querySelector('textarea[aria-label="拒绝理由（可选）"]');
+  const setReason = text => flushSync(() => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(reason(), text);
+    reason().dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  const bounds = () => composer().getBoundingClientRect();
+
+  try {
+    render(owner);
+    await wait(40);
+    const before = bounds();
+    publish({ task: task(), browserRequest: 1 });
+    assert(panel(), "A new approval opens above the composer");
+    assert(Math.abs(bounds().top - before.top) < 1, "Approval must not move the composer");
+    assert(Math.abs(panel().getBoundingClientRect().width - before.width) < 1, "Approval and composer widths must match");
+    assert(panel().getBoundingClientRect().bottom < before.top, "Approval must float above the composer");
+    assert(!fixture.querySelector("details").open, "Scripts are collapsed by default");
+    assert(document.activeElement === editor(), "Opening approval must not steal focus from the draft");
+    setReason("请只查看首页");
+    const approveButton = button("允许此操作");
+    flushSync(() => { approveButton.click(); approveButton.click(); });
+    assert(decisions.length === 1, "Repeated approval submits once");
+    assert(!button("停止任务").disabled, "Stop remains available while submitting");
+    publish({ task: task() });
+    settleDecision.reject(new Error("提交失败，请重试。"));
+    await until(() => fixture.querySelector('[role="alert"]'), "Submission failure is visible");
+    assert(reason().value === "请只查看首页" && editor().textContent === "保留这段未发送草稿", "Failure preserves rejection reason and message draft");
+    click("收起审批");
+    await wait(30);
+    assert(!panel() && snapshot.task && stopCalls === 0, "Collapse hides only the panel");
+    publish({ task: { ...snapshot.task } });
+    assert(!panel(), "An update to the same approval must not reopen it");
+    click("提交失败 · 查看审批");
+    reason().focus();
+    flushSync(() => reason().dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    await wait(30);
+    assert(!panel() && document.activeElement?.getAttribute("aria-expanded") === "false", "Escape collapses and returns keyboard focus to the reopen control");
+    render(other);
+    assert(!panel() && !fixture.querySelector('[data-slot="approval-anchor"]'), "Another conversation must not contain owner approval controls");
+    assert(button("发送").disabled && editor().getAttribute("contenteditable") === "true", "Another conversation retains an editable draft and disabled send");
+    editor().focus();
+    flushSync(() => document.execCommand("insertText", false, "继续编辑"));
+    flushSync(() => editor().dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
+    assert(sendCalls === 0, "Enter cannot send while another task owns the browser");
+    render(owner);
+    assert(!panel(), "Returning to the owner preserves collapsed state");
+    click("等待批准");
+    assert(reason().value === "请只查看首页", "Returning to the owner preserves rejection reason");
+    click("拒绝此操作");
+    assert(decisions.at(-1).decision === "reject" && decisions.at(-1).reason === "请只查看首页", "Reject submits only the current approval and its reason");
+    settleDecision.resolve();
+    await until(() => !panel(), "Accepted decision removes active approval controls");
+    publish({ task: task("approval-2"), browserRequest: 2 });
+    assert(panel() && reason().value === "", "A different approval opens once with a fresh reason");
+    fixture.style.width = "min(320px, calc(100vw - 32px))";
+    document.documentElement.classList.add("dark");
+    await wait(40);
+    fixture.querySelector("summary").click();
+    await wait(30);
+    assert(panel().getBoundingClientRect().top >= 0 && panel().getBoundingClientRect().right <= window.innerWidth, "Narrow approval stays inside the viewport");
+    assert(panel().scrollWidth <= panel().clientWidth + 1, "Narrow approval has no horizontal overflow");
+    click("允许此操作");
+    click("停止任务");
+    assert(snapshot.task?.phase === "stopping" && stopCalls === 1, "Stop remains possible while submitting and waits for confirmation");
+    assert(button("正在停止…").disabled, "Repeated stop is disabled");
+    settleDecision.resolve();
+    await wait();
+    assert(snapshot.task?.phase === "stopping", "Late decision cannot revive a stopping run");
+    finishStop();
+    assert(!panel() && button("发送"), "Confirmed stop releases the composer");
+    assert(owner.getDraft().text === "保留这段未发送草稿", "Stopping preserves the unsent draft");
+    publish({ task: task("preview"), browserRequest: 3 });
+    result.textContent = "PASS: approval placement, focus, duplicate guard, failure retention, collapse/reopen, Escape, cross-conversation drafts, reason retention, reject, new approval, narrow dark layout and stop confirmation";
+    result.dataset.passed = "true";
+  } catch (error) {
+    result.textContent = `FAIL: ${error.message}`;
+    result.dataset.passed = "false";
+    throw error;
+  }
+</script>

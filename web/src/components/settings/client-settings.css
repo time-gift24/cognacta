@@ -1,0 +1,124 @@
+.settings-content {
+  scroll-padding-block: 2.5rem;
+}
+
+.settings-section {
+  outline: none;
+}
+
+.settings-section:last-child {
+  min-height: calc(100dvh - 8rem);
+}
+
+.settings-section:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 6px;
+}
+
+.settings-choice > input:focus-visible + span {
+  outline: 2px solid var(--ring);
+  outline-offset: 3px;
+}
+
+.settings-choice > input:checked + span {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+}
+
+.settings-choice:hover > span:first-of-type {
+  border-color: var(--primary);
+}
+
+.settings-theme-preview {
+  --preview-ground: #eeefec;
+  --preview-surface: #fff;
+  --preview-sidebar: #f5f6f3;
+  --preview-line: #d7dcd6;
+  display: block;
+  overflow: hidden;
+  padding: 1rem 0 0 1rem;
+  height: 7rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--preview-ground);
+  transition: border-color 150ms ease-out;
+}
+
+.settings-theme-preview[data-theme-preview="dark"] {
+  --preview-ground: #1b221e;
+  --preview-surface: #252d28;
+  --preview-sidebar: #202722;
+  --preview-line: #48544b;
+}
+
+.settings-theme-preview[data-theme-preview="system"] {
+  background: linear-gradient(120deg, #eeefec 50%, #1b221e 50%);
+}
+
+@media (prefers-color-scheme: dark) {
+  .settings-theme-preview[data-theme-preview="system"] {
+    --preview-surface: #252d28;
+    --preview-sidebar: #202722;
+    --preview-line: #48544b;
+  }
+}
+
+.settings-preview-window {
+  display: grid;
+  grid-template-columns: 27% 1fr;
+  height: 100%;
+  overflow: hidden;
+  border: 1px solid var(--preview-line);
+  border-right: 0;
+  border-bottom: 0;
+  border-radius: 6px 0 0 0;
+  background: var(--preview-surface);
+}
+
+.settings-preview-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 7px;
+  background: var(--preview-sidebar);
+}
+
+.settings-preview-main {
+  padding: 17px 12px;
+}
+
+.settings-preview-sidebar i,
+.settings-preview-main i {
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--preview-line);
+}
+
+.settings-preview-main i {
+  margin-bottom: 8px;
+}
+
+.settings-preview-main i:first-child {
+  width: 45%;
+  margin-bottom: 13px;
+}
+
+.settings-preview-main i:nth-child(3) {
+  width: 75%;
+}
+
+.settings-preview-main b {
+  display: block;
+  width: 25%;
+  height: 9px;
+  margin-top: 13px;
+  border-radius: 3px;
+  background: var(--primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-theme-preview {
+    transition: none;
+  }
+}

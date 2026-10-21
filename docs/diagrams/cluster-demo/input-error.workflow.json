@@ -1,0 +1,110 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "06 · Input error｜类型检查阻止错误输入",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "legend": {
+      "entries": {
+        "backend": {
+          "label": "业务节点"
+        },
+        "security": {
+          "label": "失败边界"
+        },
+        "messagebus": {
+          "label": "未执行节点"
+        },
+        "external": {
+          "label": "Run 终态"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "execution",
+      "label": "节点执行与输入边界"
+    },
+    {
+      "id": "result",
+      "label": "Run 结算"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "seed",
+      "lane": "execution",
+      "col": 0,
+      "type": "backend",
+      "label": "seed",
+      "sublabel": "输入 ()",
+      "tag": "Δ value = 1",
+      "width": 180,
+      "height": 84
+    },
+    {
+      "id": "typedTarget",
+      "lane": "execution",
+      "col": 2,
+      "type": "security",
+      "label": "typed_target",
+      "sublabel": "期望 usize，收到 String",
+      "tag": "输入适配失败",
+      "width": 180,
+      "height": 84
+    },
+    {
+      "id": "failed",
+      "lane": "result",
+      "col": 5,
+      "type": "external",
+      "label": "Failed",
+      "sublabel": "value = 1",
+      "tag": "Run 终态 · exit 1",
+      "width": 180,
+      "height": 84
+    }
+  ],
+  "edges": [
+    {
+      "id": "seed-typedTarget",
+      "from": "seed",
+      "to": "typedTarget",
+      "label": "Goto · seeded",
+      "variant": "emphasis"
+    },
+    {
+      "id": "typedTarget-failed",
+      "from": "typedTarget",
+      "to": "failed",
+      "label": "类型不匹配",
+      "role": "error",
+      "variant": "security"
+    }
+  ],
+  "mainPath": [
+    "seed",
+    "typedTarget",
+    "failed"
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "失败发生在 body 之前",
+      "items": [
+        "目标适配层拒绝输入；typed_target 的 body 未执行。",
+        "错误分类 InputTypeMismatch；已提交 value=1 保留。"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "验证什么",
+      "items": [
+        "类型擦除后的动态 Goto 仍在目标边界检查输入类型。",
+        "失败节点记录为 typed_target，CLI 退出码为 1。"
+      ]
+    }
+  ]
+}

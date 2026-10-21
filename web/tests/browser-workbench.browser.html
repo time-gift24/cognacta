@@ -1,0 +1,478 @@
+<!doctype html>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Browser workbench regression</title>
+<!-- Run npm run dev, then open /tests/browser-workbench.browser.html. -->
+<div id="fixture" class="flex h-[min(740px,90dvh)] min-w-0"></div>
+<pre id="result" class="break-words whitespace-pre-wrap">Running…</pre>
+<script type="module">
+  import React from "react"
+  import { createRoot } from "react-dom/client"
+  import { flushSync } from "react-dom"
+  import "/src/index.css"
+  import { WorkbenchPanel } from "/src/components/workbench/workbench.tsx"
+  import { createDemoAdapters } from "/src/adapters/demo.ts"
+  import {
+    createAppDependencies,
+    AppDependenciesProvider,
+  } from "/src/app/dependencies.tsx"
+
+  const fixture = document.querySelector("#fixture")
+  const result = document.querySelector("#result")
+  const root = createRoot(fixture)
+  const listeners = new Set()
+  const calls = []
+  let selectionFailure = false
+  const pendingNavigations = new Map()
+  let snapshot = {
+    simulated: true,
+    task: null,
+    browserRequest: 0,
+    browser: {
+      url: "",
+      title: "",
+      status: "empty",
+      canGoBack: false,
+      canGoForward: false,
+    },
+  }
+  const update = (patch) => {
+    snapshot = { ...snapshot, ...patch }
+    flushSync(() => listeners.forEach((listener) => listener()))
+  }
+  const page = (url) => ({
+    url,
+    title: "项目资料",
+    status: "ready",
+    canGoBack: true,
+    canGoForward: false,
+    preview: {
+      heading: "项目资料",
+      text: "这份模拟页面展示当前任务读取的资料。\n所有内容由运行时快照提供。",
+      field: { label: "搜索内容", value: "发布计划" },
+    },
+  })
+  const desktop = {
+    getState: () => snapshot,
+    subscribe(listener) {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    },
+    async decide() {
+      calls.push("decide")
+    },
+    async stop() {
+      calls.push("stop")
+    },
+    async selectBrowserThread(threadId, options) {
+      calls.push(["select", threadId, options])
+      if (selectionFailure) throw new Error("Chrome 窗口暂不可用，请重试。")
+    },
+    async navigate(url) {
+      calls.push(["navigate", url])
+      if (!/^https?:\/\//.test(url)) throw new Error("请输入有效的网址。")
+      const pending = pendingNavigations.get(snapshot.browserThreadId)
+      if (pending) { await pending.promise; return }
+      update({ browser: page(url) })
+    },
+    async back() {
+      calls.push("back")
+      update({
+        browser: {
+          ...page("https://example.test/previous"),
+          canGoBack: false,
+          canGoForward: true,
+        },
+      })
+    },
+    async forward() {
+      calls.push("forward")
+      update({ browser: page("https://example.test/current") })
+    },
+    async reload() {
+      calls.push("reload")
+      update({ browser: page(snapshot.browser.url) })
+    },
+  }
+  const dependencies = createAppDependencies(
+    createDemoAdapters({
+      backendId: "browser-workbench-fixture",
+      desktop,
+      host: {
+        async copyText() {},
+        async openExternal() {},
+        async confirm() {
+          return true
+        },
+      },
+    })
+  )
+  let showBrowser
+  let setPanelOpen
+  function Harness() {
+    const panel = React.useRef(null)
+    const [open, setOpen] = React.useState(true)
+    showBrowser = () => panel.current.openBrowser()
+    setPanelOpen = setOpen
+    return React.createElement(
+      AppDependenciesProvider,
+      { value: dependencies },
+      React.createElement(
+        React.Fragment,
+        null,
+        React.createElement(
+          "main",
+          { className: "min-w-0 flex-1 p-6" },
+          React.createElement(
+            "h1",
+            { className: "text-xl font-medium" },
+            "浏览器工作台"
+          ),
+          React.createElement(
+            "p",
+            { className: "mt-3 text-sm text-muted-foreground" },
+            "右侧使用可控的模拟运行时。"
+          )
+        ),
+        React.createElement(WorkbenchPanel, {
+          ref: panel,
+          open,
+          onClose: () => setOpen(false),
+          backend: dependencies.workbench,
+          scope: {
+            workspaceId: "workspace",
+            workspacePath: "/workspace",
+            sessionId: "thread",
+          },
+          models: [],
+        })
+      )
+    )
+  }
+  const assert = (condition, message) => {
+    if (!condition) throw new Error(message)
+  }
+  const until = async (condition, message) => {
+    const deadline = performance.now() + 4000
+    while (!condition() && performance.now() < deadline)
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    assert(condition(), message)
+  }
+  const button = (name) =>
+    [...fixture.querySelectorAll("button")].find(
+      (element) =>
+        element.getAttribute("aria-label") === name ||
+        element.textContent.trim() === name
+    )
+  const address = () => fixture.querySelector('[aria-label="地址栏"]')
+  const browserTabs = () =>
+    [...fixture.querySelectorAll('[role="tab"]')].filter(
+      (tab) => {
+        const label = tab.cloneNode(true)
+        label.querySelectorAll('[aria-hidden="true"]').forEach(node => node.remove())
+        return label.textContent.trim() === "Chrome"
+      }
+    )
+  const click = (element) => {
+    assert(element && !element.disabled, "Expected enabled control")
+    flushSync(() => element.click())
+  }
+  const write = (input, value) =>
+    flushSync(() => {
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value"
+      ).set.call(input, value)
+      input.dispatchEvent(new Event("input", { bubbles: true }))
+    })
+  const submit = () =>
+    flushSync(() =>
+      address()
+        .closest("form")
+        .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }))
+    )
+  const currentPage = "https://example.test/current"
+  const pendingTask = {
+    runId: "run-1",
+    threadId: "thread",
+    title: "核对最新发布计划",
+    phase: "awaiting-approval",
+    approval: {
+      id: "approval-1",
+      callId: "call-1",
+      title: "打开参考网站",
+      description: "核对资料",
+      targetUrl: "https://reference.test/pending",
+      toolName: "browser.navigate",
+      parameters: "{}",
+    },
+  }
+
+  try {
+    flushSync(() =>
+      root.render(
+        React.createElement(
+          React.StrictMode,
+          null,
+          React.createElement(Harness)
+        )
+      )
+    )
+    flushSync(showBrowser)
+    flushSync(showBrowser)
+    assert(
+      browserTabs().length === 1,
+      "Repeated reveal must reuse one browser tab"
+    )
+    assert(
+      fixture.textContent.includes("模拟浏览器") &&
+        fixture.textContent.includes("浏览器已就绪"),
+      "Empty browser must be explicitly simulated"
+    )
+    write(address(), currentPage)
+    submit()
+    await until(
+      () => address().value === currentPage && !address().disabled,
+      "Manual navigation did not settle"
+    )
+    assert(
+      fixture.querySelector('[aria-label="浏览器页面"] h1').textContent ===
+        "项目资料",
+      "Preview heading must come from runtime"
+    )
+    assert(
+      fixture.querySelector("input[readonly]").value === "发布计划",
+      "Preview field must come from runtime"
+    )
+    click(button("后退"))
+    await until(() => !button("前进").disabled, "Back did not update history")
+    click(button("前进"))
+    await until(
+      () => address().value === currentPage && !address().disabled,
+      "Forward did not update history"
+    )
+
+    const firstNavigation = Promise.withResolvers(), secondNavigation = Promise.withResolvers()
+    pendingNavigations.set("first-thread", firstNavigation)
+    pendingNavigations.set("second-thread", secondNavigation)
+    update({ browserThreadId: "first-thread" })
+    const pendingUrl = "https://example.test/pending"
+    write(address(), pendingUrl); submit()
+    assert(address().disabled, "The first page must retain its pending navigation")
+    update({ browserThreadId: "second-thread" })
+    assert(!address().disabled && address().value === currentPage, "Another idle page must not inherit the first page navigation or draft")
+    write(address(), pendingUrl); submit()
+    firstNavigation.resolve()
+    await new Promise(resolve => setTimeout(resolve, 40))
+    assert(address().disabled && address().value === pendingUrl, "Old page completion must preserve the new page pending state and identical draft")
+    secondNavigation.resolve()
+    await until(() => !address().disabled, "The second page navigation did not settle")
+    pendingNavigations.clear()
+    const staleFailure = Promise.withResolvers()
+    pendingNavigations.set("first-thread", staleFailure)
+    update({ browserThreadId: "first-thread" })
+    write(address(), pendingUrl); submit()
+    update({ browserThreadId: "second-thread" })
+    staleFailure.reject(new Error("Old page navigation failed"))
+    await new Promise(resolve => setTimeout(resolve, 40))
+    assert(!fixture.textContent.includes("Old page navigation failed") && !address().disabled, "Old page failures must not replace the selected page state")
+    pendingNavigations.clear()
+    update({ browserThreadId: null })
+
+    update({ task: pendingTask })
+    const beforeApproval = calls.length
+    assert(
+      address().disabled &&
+        button("后退").disabled &&
+        button("前进").disabled &&
+        button("重新加载").disabled,
+      "Task ownership must disable manual navigation"
+    )
+    assert(
+      address().value === currentPage &&
+        fixture.textContent.includes(pendingTask.approval.targetUrl),
+      "Pending target must not replace current address"
+    )
+    submit()
+    assert(
+      calls.length === beforeApproval,
+      "Submitting during approval must not execute navigation"
+    )
+    assert(
+      !button("批准") && !button("拒绝"),
+      "Workbench must not duplicate approval actions"
+    )
+    for (const [phase, label] of [
+      ["running", "执行中"],
+      ["submitting", "正在提交"],
+      ["stopping", "正在停止"],
+    ]) {
+      update({ task: { ...pendingTask, phase } })
+      assert(
+        fixture.textContent.includes(label) &&
+          fixture.textContent.includes(pendingTask.title),
+        "Task status must show owner and phase"
+      )
+    }
+
+    click(button("收起工作台"))
+    assert(
+      fixture.querySelector("[inert]"),
+      "Collapsed workbench must become inert"
+    )
+    flushSync(() => setPanelOpen(true))
+    assert(
+      snapshot.browser.url === currentPage && !calls.includes("stop"),
+      "Collapsing must preserve browser and task"
+    )
+    click(button("新建标签页"))
+    assert(
+      !fixture.querySelector('[aria-label="浏览器页面"]'),
+      "Tool tab must hide browser view"
+    )
+    flushSync(showBrowser)
+    assert(
+      browserTabs().length === 1 && address().value === currentPage,
+      "Switching back must reuse browser snapshot"
+    )
+    click(button("关闭标签页 Chrome"))
+    assert(
+      browserTabs().length === 0 && snapshot.browser.url === currentPage,
+      "Closing tab must only hide browser"
+    )
+    flushSync(showBrowser)
+    assert(
+      browserTabs().length === 1 && address().value === currentPage,
+      "Reopening must preserve browser page"
+    )
+
+    update({ task: null, browser: { ...snapshot.browser, status: "loading" } })
+    assert(
+      fixture.textContent.includes("正在加载页面") && address().disabled,
+      "Loading state must block repeated navigation"
+    )
+    update({
+      browser: {
+        ...snapshot.browser,
+        status: "error",
+        error: "模拟页面加载失败",
+      },
+    })
+    assert(
+      fixture.textContent.includes("模拟页面加载失败"),
+      "Runtime page failure must be visible"
+    )
+    click(button("重新加载页面"))
+    await until(
+      () => snapshot.browser.status === "ready" && !address().disabled,
+      "Retry must use runtime reload"
+    )
+    write(address(), "invalid address")
+    submit()
+    await until(
+      () =>
+        fixture.textContent.includes("请输入有效的网址。") &&
+        !address().disabled,
+      "Rejected navigation must show an actionable error"
+    )
+    assert(
+      address().value === "invalid address" &&
+        snapshot.browser.url === currentPage,
+      "Failed navigation must preserve input and current page"
+    )
+    flushSync(showBrowser)
+    if (innerWidth >= 768) {
+      const resize = fixture.querySelector('[role="separator"]')
+      const width = Number(resize.getAttribute("aria-valuenow"))
+      flushSync(() =>
+        resize.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true })
+        )
+      )
+      assert(
+        Number(resize.getAttribute("aria-valuenow")) >= width,
+        "Keyboard resize must remain available"
+      )
+    } else {
+      const bounds = fixture.querySelector("aside").getBoundingClientRect()
+      assert(
+        bounds.left >= 0 && bounds.right <= innerWidth + 1,
+        "Narrow workbench must fit viewport"
+      )
+    }
+    update({ task: pendingTask })
+    const activeTabBounds = browserTabs()[0].getBoundingClientRect()
+    const tabListBounds = fixture
+      .querySelector('[role="tablist"]')
+      .getBoundingClientRect()
+    assert(
+      activeTabBounds.left >= tabListBounds.left - 1 &&
+        activeTabBounds.right <= tabListBounds.right + 1,
+      "Revealed browser tab must remain visible in an overflowing tab list"
+    )
+    assert(
+      !fixture.querySelector("iframe"),
+      "Simulated page must not impersonate an embedded remote browser"
+    )
+    update({ simulated: false, browserThreadId: "thread", task: pendingTask })
+    click(button("显示 Chrome"))
+    await until(() => calls.at(-1)?.[0] === "select", "Show Chrome did not focus the runtime page")
+    assert(calls.at(-1)[1] === "thread" && calls.at(-1)[2]?.focus === true && address().disabled, "Chrome refocus must explicitly request focus and retain task ownership and the selected thread")
+    assert(fixture.textContent.includes("页面已在 Chrome 中打开"), "Live pages must be identified as external Chrome")
+    selectionFailure = true
+    click(button("显示 Chrome"))
+    await until(() => fixture.textContent.includes("Chrome 窗口暂不可用"), "Chrome focus failure must be visible")
+    selectionFailure = false
+    click(button("显示 Chrome"))
+    await until(() => !fixture.textContent.includes("Chrome 窗口暂不可用"), "Chrome focus must remain retryable")
+    const pairedFixture = document.createElement("div")
+    pairedFixture.className = "flex h-96"
+    document.body.append(pairedFixture)
+    const pairedRoot = createRoot(pairedFixture)
+    try {
+      const pairedDependencies = [0, 1].map((index) =>
+        createAppDependencies(createDemoAdapters({ backendId: `paired-workbench-${index}` }))
+      )
+      flushSync(() => pairedRoot.render(React.createElement(React.Fragment, null,
+        ...pairedDependencies.map((value, index) => React.createElement(
+          "section", { key: index, "data-workbench-instance": index, className: "flex min-w-0 flex-1" },
+          React.createElement(AppDependenciesProvider, { value }, React.createElement(WorkbenchPanel, {
+            open: true, onClose() {}, backend: value.workbench, scope: null, models: [],
+          })),
+        )),
+      )))
+      const panels = [...pairedFixture.querySelectorAll("section[data-workbench-instance]")]
+      for (const panel of panels) click(panel.querySelector('button[aria-label="新建标签页"]'))
+      const tabs = [...pairedFixture.querySelectorAll('[role="tab"]')]
+      assert(tabs.length === 4, "Each independent workbench must own its new tab")
+      const identified = [...pairedFixture.querySelectorAll('[role="tab"], [role="tabpanel"]')]
+      assert(identified.every((element) => element.id) && new Set(identified.map((element) => element.id)).size === identified.length,
+        "Workbench tab and panel DOM IDs must be unique across instances")
+      for (const panel of panels) {
+        const active = panel.querySelector('[role="tab"][aria-selected="true"]')
+        const content = document.getElementById(active.getAttribute("aria-controls"))
+        assert(content && panel.contains(content) && content.getAttribute("role") === "tabpanel" && content.getAttribute("aria-labelledby") === active.id,
+          "Each active workbench tab must label and control its own instance panel")
+      }
+      const firstActive = panels[0].querySelector('[role="tab"][aria-selected="true"]')
+      const secondActive = panels[1].querySelector('[role="tab"][aria-selected="true"]')
+      const closeActive = secondActive.closest('[class~="group/tab"]').querySelector('button[aria-label^="关闭标签页"]')
+      closeActive.focus()
+      click(closeActive)
+      await until(() => panels[1].querySelectorAll('[role="tab"]').length === 1 &&
+        panels[1].contains(document.activeElement) && document.activeElement.getAttribute("role") === "tab",
+        "Closing the second workbench active tab must keep focus in the second workbench")
+      assert(firstActive.getAttribute("aria-selected") === "true", "Closing a tab must not change the first workbench selection")
+    } finally {
+      flushSync(() => pairedRoot.unmount())
+      pairedFixture.remove()
+    }
+    result.textContent =
+      "PASS: singleton browser, runtime preview, navigation/history, concurrent page state, task lock, approval target, collapse/tab lifecycle, loading/error/retry, keyboard and narrow layout; external Chrome focus and retry; independent workbench tab IDs, ARIA links and close focus"
+    result.dataset.status = "passed"
+  } catch (error) {
+    result.textContent = `FAIL: ${error.stack || error}`
+    result.dataset.status = "failed"
+    console.error(error)
+  }
+</script>

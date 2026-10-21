@@ -1,0 +1,114 @@
+<!doctype html>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>beUI tooltip and trace regression</title>
+<style>#fixture { width: 360px; padding: 48px 20px; } #result { white-space: pre-wrap; }</style>
+<div id="fixture"></div>
+<pre id="result">Running…</pre>
+<script type="module">
+  import React from "react";
+  import { createRoot } from "react-dom/client";
+  import { flushSync } from "react-dom";
+  import "/src/index.css";
+  import { Button } from "/src/components/motion/button.tsx";
+  import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "/src/components/ui/tooltip.tsx";
+  import { TraceDisclosure } from "/src/components/ui/trace.tsx";
+  import { ChainOfThought } from "/src/components/chat/chain-of-thought.tsx";
+  import { Breadcrumbs } from "/src/components/ui/breadcrumbs.tsx";
+  import { createTestDependencies, withDependencies } from "/tests/support.tsx";
+
+  const h = React.createElement;
+  const fixture = document.querySelector("#fixture");
+  const result = document.querySelector("#result");
+  const root = createRoot(fixture);
+  const dependencies = createTestDependencies();
+  const wait = () => new Promise(resolve => setTimeout(resolve, 25));
+  const assert = (condition, message) => { if (!condition) throw new Error(message); };
+  const until = async (condition, message) => {
+    const deadline = performance.now() + 5000;
+    while (!condition() && performance.now() < deadline) await wait();
+    assert(condition(), message);
+  };
+  const click = element => flushSync(() => element.click());
+  const render = children => flushSync(() => root.render(withDependencies(children, dependencies)));
+  const disclosures = () => [...fixture.querySelectorAll('[data-slot="trace-disclosure"]')];
+  const trigger = wrapper => wrapper.querySelector("button[aria-expanded]");
+  const section = wrapper => wrapper.querySelector("section");
+  let actions = 0;
+  const buttonRef = React.createRef();
+  const parts = [{ kind: "reasoning", text: "保留这段思考。", state: "done" }];
+
+  function Counter() {
+    const [count, setCount] = React.useState(0);
+    return h("button", { id: "counter", onClick: () => setCount(value => value + 1) }, String(count));
+  }
+  const chain = (key, answering = false, flow = parts) => h(ChainOfThought, {
+    key, parts: flow, streaming: true, answering,
+  });
+
+  try {
+    render(h(TooltipProvider, null, h(Tooltip, null,
+      h(TooltipTrigger, { asChild: true }, h(Button, { id: "tooltip-action", ref: buttonRef, onClick: () => { actions += 1; } }, "动作")),
+      h(TooltipContent, null, "动作提示"),
+    )));
+    await wait();
+    const action = fixture.querySelector("#tooltip-action");
+    assert(buttonRef.current === action, "Tooltip must preserve the actual Button ref");
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+    flushSync(() => action.focus());
+    await until(() => document.querySelector('[role="tooltip"]')?.textContent === "动作提示", "Keyboard focus must show the beUI tooltip");
+    const tooltip = document.querySelector('[role="tooltip"]');
+    assert(action.getAttribute("aria-describedby") === tooltip.id, "Tooltip must describe its actual trigger");
+    assert(tooltip.querySelector("svg"), "The existing tooltip arrow must remain present");
+    assert(tooltip.getBoundingClientRect().top < action.getBoundingClientRect().top, "The default tooltip must remain above its trigger");
+    flushSync(() => {
+      action.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerType: "mouse", button: 0 }));
+      action.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerType: "mouse", button: 0 }));
+      action.click();
+    });
+    assert(actions === 1, "Tooltip must preserve the Button action");
+    await until(() => !document.querySelector('[role="tooltip"]'), "Click must dismiss the tooltip");
+
+    render(h(TraceDisclosure, { title: "可展开详情", defaultOpen: true }, h(Counter)));
+    const wrapper = disclosures()[0];
+    assert(trigger(wrapper).getAttribute("aria-expanded") === "true", "defaultOpen must initially expand");
+    const counter = fixture.querySelector("#counter");
+    click(counter);
+    click(trigger(wrapper));
+    assert(section(wrapper).inert && section(wrapper).getAttribute("aria-hidden") === "true", "Closed detail must be inert and hidden from assistive technology");
+    assert(fixture.querySelector("#counter") === counter, "Closing must keep detail children mounted");
+    click(trigger(wrapper));
+    assert(counter.textContent === "1" && !section(wrapper).inert, "Reopening must preserve local child state");
+
+    render(chain("automatic"));
+    assert(trigger(disclosures()[0]).getAttribute("aria-expanded") === "true", "Streaming steps must initially expand");
+    render(chain("automatic", true));
+    assert(trigger(disclosures()[0]).getAttribute("aria-expanded") === "false", "An answer must automatically collapse untouched steps");
+
+    render(chain("manual"));
+    const reason = trigger(disclosures()[1]);
+    flushSync(() => reason.focus());
+    click(reason);
+    assert(reason.getAttribute("aria-expanded") === "true", "A reasoning step must expand independently");
+    render(chain("manual", true));
+    assert(trigger(disclosures()[0]).getAttribute("aria-expanded") === "true", "Entering details must let the user retain control when the answer arrives");
+    click(trigger(disclosures()[0]));
+    click(trigger(disclosures()[0]));
+    assert(trigger(disclosures()[1]) === reason && reason.getAttribute("aria-expanded") === "true", "Group collapse must preserve nested open state and DOM identity");
+
+    render(chain("failure", false, [{ kind: "tool", callId: "failure", name: "searchCode", inputText: "{}", state: "error", errorText: "可重试的工具错误" }]));
+    assert(trigger(disclosures()[1]).getAttribute("aria-expanded") === "true", "Tool failure details must default to expanded");
+
+    render(h(Breadcrumbs, { items: [{ label: "工作区", onSelect: () => { actions += 1; } }, { label: "当前页面" }] }));
+    click(fixture.querySelector("nav button"));
+    assert(actions === 2 && fixture.querySelector('li[aria-current="page"] > span:last-child').textContent === "当前页面", "beUI breadcrumb action and current-page semantics must remain intact");
+    result.dataset.passed = "true";
+    result.textContent = "PASS: beUI tooltip refs/focus/arrow/action, trace default/independent state, persistent children, automatic collapse/manual control, tool failure and breadcrumbs";
+  } catch (error) {
+    result.dataset.passed = "false";
+    result.textContent = `FAIL: ${error.message}`;
+    throw error;
+  } finally {
+    root.unmount();
+  }
+</script>

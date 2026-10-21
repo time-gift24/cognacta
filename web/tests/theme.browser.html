@@ -1,0 +1,141 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Theme and palette regression check</title>
+<!-- Run npm run dev, then open /tests/theme.browser.html. -->
+<div id="fixture"></div>
+<pre id="result">Running…</pre>
+<script type="module">
+  import React from "react";
+  import { createRoot } from "react-dom/client";
+  import { flushSync } from "react-dom";
+  import { ThemeProvider, useTheme } from "/src/components/theme-provider.tsx";
+  import { loadInitialThemePreferences } from "/src/preferences/theme.ts";
+
+  const fixture = document.querySelector("#fixture");
+  const result = document.querySelector("#result");
+  const root = createRoot(fixture);
+  const assert = (condition, message) => { if (!condition) throw new Error(message); };
+  const values = new Map();
+  const failReads = new Set();
+  const failWrites = new Set();
+  const listeners = new Set();
+  let nextThemeWrite;
+  const preferences = {
+    async readTheme() {
+      if (failReads.has("theme")) throw new Error("read denied");
+      return values.get("theme") ?? null;
+    },
+    async readPalette() {
+      if (failReads.has("palette")) throw new Error("read denied");
+      return values.get("palette") ?? null;
+    },
+    async writeTheme(value) {
+      if (failWrites.has("theme")) throw new Error("write denied");
+      const pending = nextThemeWrite;
+      nextThemeWrite = undefined;
+      if (pending) await pending.promise;
+      values.set("theme", value);
+    },
+    async writePalette(value) {
+      if (failWrites.has("palette")) throw new Error("write denied");
+      values.set("palette", value);
+    },
+    subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+  };
+  const originalMatchMedia = window.matchMedia;
+  const mediaQuery = Object.assign(new EventTarget(), { matches: false });
+  let setTheme;
+  let setPalette;
+  let currentTheme;
+  let currentPalette;
+  function Probe() {
+    const theme = useTheme();
+    setTheme = theme.setTheme;
+    setPalette = theme.setPalette;
+    currentTheme = theme.theme;
+    currentPalette = theme.palette;
+    return React.createElement("span", null, `${theme.theme} / ${theme.palette}`);
+  }
+  const render = async key => {
+    const initialPreferences = await loadInitialThemePreferences(preferences, "light");
+    flushSync(() => root.render(React.createElement(
+      ThemeProvider, { key, preferences, initialPreferences, defaultTheme: "light", disableTransitionOnChange: false }, React.createElement(Probe),
+    )));
+  };
+  const expectTheme = (theme, resolved = theme) => assert(
+    currentTheme === theme && document.documentElement.classList.contains(resolved) && document.documentElement.style.colorScheme === resolved,
+    `Expected ${theme} theme resolved to visible ${resolved} with matching color-scheme`,
+  );
+  const expectPalette = palette => assert(currentPalette === palette && document.documentElement.dataset.palette === palette, `Expected visible ${palette} palette`);
+  const notify = change => flushSync(() => { for (const listener of listeners) listener(change); });
+  try {
+    window.matchMedia = query => query === "(prefers-color-scheme: dark)" ? mediaQuery : originalMatchMedia.call(window, query);
+    failReads.add("theme"); failReads.add("palette");
+    failWrites.add("theme"); failWrites.add("palette");
+    await render("denied");
+    expectTheme("light"); expectPalette("official");
+    flushSync(() => { setTheme("dark"); setPalette("claude"); });
+    await Promise.resolve();
+    expectTheme("dark"); expectPalette("claude");
+    failReads.clear(); failWrites.clear();
+
+    for (const blocked of ["theme", "palette"]) {
+      values.set("theme", "dark"); values.set("palette", "claude");
+      failReads.add(blocked); failWrites.add(blocked);
+      await render(`blocked-${blocked}`);
+      expectTheme(blocked === "theme" ? "light" : "dark");
+      expectPalette(blocked === "palette" ? "official" : "claude");
+      flushSync(() => { setTheme("light"); setPalette("official"); });
+      await Promise.resolve();
+      expectTheme("light"); expectPalette("official");
+      assert(values.get(blocked === "theme" ? "palette" : "theme") === (blocked === "theme" ? "official" : "light"), "Independent preference write must survive the other failure");
+      failReads.clear(); failWrites.clear();
+    }
+
+    values.set("theme", "dark"); values.set("palette", "claude");
+    await render("working");
+    expectTheme("dark"); expectPalette("claude");
+    for (const palette of ["official", "claude"]) {
+      for (const theme of ["light", "dark"]) {
+        flushSync(() => { setTheme(theme); setPalette(palette); });
+        expectTheme(theme); expectPalette(palette);
+        assert(values.get("theme") === theme && values.get("palette") === palette, "Preferences must persist independently");
+      }
+    }
+    await render("remounted");
+    expectTheme("dark"); expectPalette("claude");
+    assert(listeners.size === 1, "Remount must clean up the old subscription");
+    notify({ palette: "official" }); expectTheme("dark"); expectPalette("official");
+    notify({ theme: "light" }); expectTheme("light");
+    notify({ palette: "claude" });
+    notify({ theme: null }); expectTheme("light"); expectPalette("claude");
+    notify({ theme: "dark", palette: null }); expectTheme("dark"); expectPalette("official");
+    notify({}); expectTheme("dark");
+    notify({ theme: null, palette: null }); expectTheme("light"); expectPalette("official");
+
+    const late = Promise.withResolvers();
+    nextThemeWrite = late;
+    flushSync(() => setTheme("dark"));
+    flushSync(() => setTheme("light"));
+    late.reject(new Error("late write failure"));
+    await Promise.resolve(); await Promise.resolve();
+    expectTheme("light");
+
+    flushSync(() => { setPalette("claude"); setTheme("system"); });
+    expectTheme("system", "light"); expectPalette("claude");
+    mediaQuery.matches = true;
+    flushSync(() => mediaQuery.dispatchEvent(new Event("change")));
+    expectTheme("system", "dark");
+    flushSync(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "d", bubbles: true })));
+    expectTheme("light"); expectPalette("claude");
+    result.textContent = "PASS: preloaded initial preferences, independent read/write failures, immediate changes without rollback, remount persistence, platform-neutral cross-tab updates, reset, system changes and keyboard toggle";
+    result.dataset.passed = "true";
+  } catch (error) {
+    result.textContent = `FAIL: ${error.message}`;
+    result.dataset.passed = "false";
+    throw error;
+  } finally {
+    root.unmount();
+    window.matchMedia = originalMatchMedia;
+  }
+</script>

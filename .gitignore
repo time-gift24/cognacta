@@ -1,0 +1,65 @@
+# ---------------------------------------------------------------
+# Rust / Cargo
+# ---------------------------------------------------------------
+# Build artifacts — workspace target dir and any nested ones
+/target/
+**/target/
+# Incremental & backup artifacts
+**/*.rs.bk
+**/*.rlib
+**/*.pdb
+# Profiling / coverage
+*.profraw
+*.profdata
+/coverage/
+# Local cargo config (may contain machine-specific paths)
+.cargo/config.toml
+
+# ---------------------------------------------------------------
+# Editors & IDEs
+# ---------------------------------------------------------------
+# JetBrains (IntelliJ, CLion, RustRover, etc.)
+.idea/
+*.iml
+*.ipr
+*.iws
+# Visual Studio / VS Code
+.vs/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+# Zed
+.zed/
+# Vim / Neovim
+*.swp
+*.swo
+*~
+.netrwhist
+# Emacs
+*~
+\#*\#
+.#*
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+# Xcode
+*.xcuserstate
+xcuserdata/
+
+# ---------------------------------------------------------------
+# OS
+# ---------------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---------------------------------------------------------------
+# Env / secrets / misc
+# ---------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.log
+
+# Local learning and research materials
+/references/

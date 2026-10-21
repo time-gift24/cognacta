@@ -1,0 +1,91 @@
+<!doctype html>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Agent library interaction regression</title>
+<style>#result { white-space: pre-wrap; overflow-wrap: anywhere; }</style>
+<!-- Run npm run dev, then open /tests/agent-library.browser.html. -->
+<div id="fixture" style="height: 85dvh"></div>
+<pre id="result">Running…</pre>
+<script type="module">
+  import React from "react"
+  import { createRoot } from "react-dom/client"
+  import { flushSync } from "react-dom"
+  import "/src/index.css"
+  import { AgentLibraryScreen } from "/src/components/agents/agent-library-screen.tsx"
+  import { createTestDependencies, withTestTheme } from "/tests/support.tsx"
+
+  const fixture = document.querySelector("#fixture")
+  const result = document.querySelector("#result")
+  const root = createRoot(fixture)
+  const dependencies = createTestDependencies()
+  const configuration = (name, description) => ({ name, description, instructions: "执行任务", toolIds: [], mcpServerIds: [], skillIds: [] })
+  const local = configuration("项目助手", "整理进展与任务")
+  const agents = [
+    { id: "local", configuration: local },
+    { id: "official", source: "official", contentId: "hash-hidden-from-list", releaseTag: "official-hidden-tag", configuration: configuration("资料研究助手", "核对来源与整理引用") },
+    { id: "draft", source: "local", configuration: configuration("原名称", "原说明"), draft: configuration("评审助手", "审阅方案并跟进待办") },
+    { id: "clean", configuration: configuration("写作助手", "润色文案"), draft: configuration("写作助手", "润色文案") },
+  ]
+  let opened = ""
+  let copied = ""
+  const props = { agents, busy: false, canCreate: true, onOpen: id => opened = id, onCopy: id => copied = id }
+  const render = updates => flushSync(() => root.render(withTestTheme(React.createElement(AgentLibraryScreen, { ...props, ...updates }), dependencies)))
+  const assert = (value, message) => { if (!value) throw new Error(message) }
+  const button = label => [...fixture.querySelectorAll("button")].find(node => {
+    const text = (node.getAttribute("aria-label") ?? node.textContent).trim()
+    return text === label || (label.startsWith("打开 ") && text.startsWith(label))
+  })
+  const click = node => { assert(node && !node.disabled, "Expected enabled control"); flushSync(() => { node.focus(); node.click() }) }
+  const rows = () => [...fixture.querySelectorAll('ul[aria-label="Agent 列表"] > li')]
+  const search = () => fixture.querySelector('input[aria-label="搜索 Agent"]')
+  const write = value => flushSync(() => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(search(), value)
+    search().dispatchEvent(new Event("input", { bubbles: true }))
+  })
+  const checks = []
+  try {
+    render({})
+    assert(rows().length === 4, "Every Agent must be reachable from the list")
+    assert(fixture.querySelector("h1").className === "sr-only", "The list must not duplicate its breadcrumb with a visible title")
+    assert(!fixture.textContent.includes("hash-hidden") && !fixture.textContent.includes("official-hidden-tag"), "Implementation identifiers must not leak into the list")
+    assert(rows().filter(row => row.textContent.includes("未保存")).length === 1, "Only changed drafts should show unsaved state")
+    click(button("打开 评审助手"))
+    assert(opened === "draft", "The current draft name must open its actual Agent")
+    checks.push("Actual entries, latest draft labels and accurate unsaved state; no redundant header or identifiers")
+
+    click(button("官方"))
+    assert(rows().length === 1 && rows()[0].textContent.includes("资料研究助手"), "Official filter must select official entries")
+    click(button("复制 资料研究助手 为本地 Agent"))
+    assert(copied === "official", "Official copy must route to its entry")
+    click(button("本地"))
+    assert(rows().length === 3, "Missing source defaults to local")
+    click(button("全部"))
+    write("引用")
+    assert(rows().length === 1 && rows()[0].textContent.includes("资料研究助手"), "Search must include descriptions")
+    write("没有这个Agent")
+    assert(rows().length === 0 && fixture.textContent.includes("没有匹配的 Agent"), "Unmatched search needs a recoverable empty state")
+    click(button("清除筛选"))
+    assert(rows().length === 4 && search().value === "" && document.activeElement === search(), "Reset must restore the list and search focus")
+    write("评审")
+    assert(rows().length === 1 && rows()[0].textContent.includes("评审助手"), "Search must include unsaved names")
+    click(button("清除 Agent 搜索"))
+    assert(rows().length === 4 && document.activeElement === search(), "Inline clear must return keyboard focus to search")
+    checks.push("Source filters, description/draft search and reset close their interaction loops")
+
+    render({ busy: true })
+    assert(button("复制 资料研究助手 为本地 Agent").disabled, "Busy state must disable official copy")
+    render({ canCreate: false })
+    assert(!button("复制 资料研究助手 为本地 Agent"), "Unavailable creation must not offer an impossible copy")
+    render({ agents: [] })
+    assert(fixture.textContent.includes("还没有 Agent"), "Empty libraries must explain the empty state")
+    assert(!fixture.querySelector('[aria-label="新建本地 Agent"]'), "Creation belongs to the section sidebar, not the list page")
+    render({})
+    checks.push("Copy is gated by busy and capability; creation stays in the section sidebar; empty libraries explain the state")
+    result.dataset.status = "passed"
+    result.textContent = `PASS (${checks.length})\n${checks.join("\n")}`
+  } catch (error) {
+    result.dataset.status = "failed"
+    result.textContent = `FAIL\n${error.stack}`
+    console.error(error)
+  }
+</script>

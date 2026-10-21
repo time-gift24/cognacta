@@ -1,0 +1,74 @@
+<!doctype html>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Tauri startup regression</title>
+<div id="root"></div>
+<pre id="result" style="position:fixed;bottom:0;left:0;z-index:100;background:Canvas;color:CanvasText;font-size:11px">Running…</pre>
+<script type="module">
+  import { mockIPC, mockWindows } from "@tauri-apps/api/mocks"
+  import { emit } from "@tauri-apps/api/event"
+  let starts = 0
+  const calls = []
+  let state = { simulated: false, task: null, browserRequest: 0, browser: { url: "", title: "", status: "empty", canGoBack: false, canGoForward: false } }
+  mockWindows("main")
+  mockIPC(async (command, args) => {
+    calls.push([command, args])
+    if (command !== "runtime_request") throw new Error(`Unexpected command ${command}`)
+    switch (args.method) {
+      case "status":
+        if (starts++ === 0) throw { kind: "unavailable", message: "Service failed to start" }
+        return state
+      case "agents_load": return { agents: [], resources: { mcpServers: [], tools: [], skills: [] } }
+      case "skill_library_info": return { kind: "desktop", root: "/home/test/.omnimind-ops/skills" }
+      case "skill_library_list": case "skills_list": case "models_list": return []
+      case "workspace_directories": return [{ name: "Fixture", path: "/fixture" }]
+      case "workspace_resolve": return { name: "Fixture", path: args.params.path }
+      case "workspace_bind": return null
+      case "browser_select": return { selected: true }
+      case "navigate":
+        state = { ...state, browserRequest: state.browserRequest + 1, browser: { ...state.browser, url: args.params.url, title: "Manual page", status: "ready" } }
+        await emit("runtime-event", { event: "desktop_state", state })
+        return { navigated: true }
+      default: throw new Error(`Unexpected method ${args.method}`)
+    }
+  }, { shouldMockEvents: true })
+  const button = name => [...document.querySelectorAll("button")].find(element => element.textContent.trim() === name || element.getAttribute("aria-label") === name)
+  const until = async (predicate, message) => {
+    for (let count = 0; count < 500; count++) { if (predicate()) return; await new Promise(resolve => setTimeout(resolve, 20)) }
+    throw new Error(message)
+  }
+  const assert = (value, message) => { if (!value) throw new Error(message) }
+  try {
+    await import("/src/main.tsx")
+    await until(() => button("重试启动"), "Failed startup must expose retry")
+    assert(document.body.textContent.includes("桌面服务启动失败"), "Startup failure cannot leave a blank page")
+    assert(document.querySelector('[data-slot="desktop-titlebar"]'), "Startup failure must retain the desktop titlebar")
+    assert(!document.querySelector('[data-slot="chat-composer-anchor"]'), "Failure must not fall back to the demo app")
+    button("重试启动").click()
+    await until(() => document.querySelector('[data-slot="chat-composer-anchor"]'), "Retry must initialize chat without requiring a workspace")
+    const titlebar = document.querySelector('[data-slot="desktop-titlebar"]')
+    await until(() => titlebar.querySelector("header"), "Retry must move the shared Header into the desktop titlebar")
+    assert(document.querySelectorAll("header").length === 1 && !titlebar.nextElementSibling.querySelector("header"), "Desktop content must not duplicate the shared Header")
+    assert(!calls.some(([, args]) => args?.method === "browser_select" && args.params.focus), "Normal startup must not open or focus Chrome")
+    assert(!button("选择工作区") && !button("选择工作区（可选）"), "The composer must not show a workspace selection entry")
+    button("添加工作区").click()
+    await until(() => button("打开工作区") && !button("打开工作区").disabled, "Directory picker remains available without a model")
+    assert(document.body.textContent.includes("工作区与会话在重新打开应用后重置。"), "Native copy describes native memory lifetime")
+    button("打开工作区").click()
+    await until(() => document.querySelector('[data-slot="chat-composer-anchor"]'), "Directory selection must enter chat")
+    assert(document.body.textContent.includes("尚未配置模型"), "Missing model must have a visible explanation")
+    await until(() => calls.some(([, args]) => args?.method === "workspace_bind"), "New sessions must capture their baseline")
+    const site = [...document.querySelectorAll("button")].find(element => element.textContent.includes("Microsoft 必应"))
+    assert(site && !site.disabled, "Manual browser must remain available without model setup")
+    site.click()
+    await until(() => calls.some(([, args]) => args?.method === "navigate"), "Manual navigation must reach native runtime")
+    await until(() => button("显示 Chrome"), "Manual navigation must expose the external Chrome window")
+    button("显示 Chrome").click()
+    await until(() => calls.some(([, args]) => args?.method === "browser_select" && args.params.focus === true), "Show Chrome must explicitly focus the selected runtime page")
+    assert(!calls.some(([command]) => command === "browser_set_bounds"), "External Chrome must not receive native surface commands")
+    document.querySelector("#result").textContent = "PASS: native titlebar survives startup failure/retry, single shared Header, no demo fallback, missing-model explanation, directory/baseline, manual browser without model"
+  } catch (error) {
+    document.querySelector("#result").textContent = `FAIL: ${error.stack}`
+    throw error
+  }
+</script>

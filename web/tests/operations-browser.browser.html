@@ -1,0 +1,96 @@
+<!doctype html>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Manual operations and Agent Chrome isolation regression</title>
+<div id="fixture" class="flex h-[min(740px,90dvh)] min-w-0"></div>
+<pre id="result">Running…</pre>
+<script type="module">
+import React from "react"
+import { createRoot } from "react-dom/client"
+import { flushSync } from "react-dom"
+import "/src/index.css"
+import { WorkbenchPanel } from "/src/components/workbench/workbench.tsx"
+import { createDemoAdapters } from "/src/adapters/demo.ts"
+import { createAppDependencies, AppDependenciesProvider } from "/src/app/dependencies.tsx"
+const fixture = document.querySelector("#fixture"), result = document.querySelector("#result")
+const root = createRoot(fixture), listeners = new Set(), calls = [], bounds = []
+const page = url => ({ url, title: url, status: "ready", canGoBack: true, canGoForward: false })
+const task = { runId: "run", threadId: "agent", title: "Agent is working", phase: "running" }
+let snapshot = { simulated: false, tasks: [task], task, browserThreadId: "agent", browserRequest: 0, browser: page("https://chrome.test/"), operationsBrowser: page("https://ops.test/") }
+let fail = false, pending
+const update = patch => { snapshot = { ...snapshot, ...patch }; flushSync(() => listeners.forEach(listener => listener())) }
+const desktop = {
+ getState: () => snapshot,
+ subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener) },
+ async setBrowserViewport(value) { bounds.push(value) },
+ async readOperationsBrowser() { return snapshot.operationsBrowser },
+ async operationsNavigate(url) { calls.push(["operations", url]); if (fail) throw new Error("运维导航失败"); if (pending) await pending.promise; update({ operationsBrowser: page(url) }) },
+ async operationsBack() { calls.push(["operations-back"]); update({ operationsBrowser: page("https://ops.test/") }) },
+ async operationsForward() {}, async operationsReload() {},
+ async selectBrowserThread(threadId, options) { calls.push(["chrome-select", threadId, options]) },
+ async navigate(url) { calls.push(["chrome-navigate", url]) }, async back() {}, async forward() {}, async reload() {}, async decide() {}, async stop() {},
+}
+const dependencies = createAppDependencies(createDemoAdapters({ backendId: "operations-fixture", desktop }))
+let revealChrome, setOpen
+function Harness() {
+ const ref = React.useRef(null), [open, updateOpen] = React.useState(true)
+ setOpen = updateOpen; revealChrome = () => ref.current.openBrowser()
+ // Same subscription used by App: an Agent tool reveals its Chrome tab.
+ React.useEffect(() => { let previous = snapshot.browserRequest; return desktop.subscribe(() => { if (snapshot.browserRequest !== previous) { previous = snapshot.browserRequest; ref.current.openBrowser() } }) }, [])
+ return React.createElement(AppDependenciesProvider, { value: dependencies }, React.createElement(WorkbenchPanel, { ref, open, onClose() { updateOpen(false) }, backend: dependencies.workbench, scope: null, models: [] }))
+}
+const assert = (value, message) => { if (!value) throw new Error(message) }
+const until = async (condition, message) => { const deadline = Date.now() + 4000; while (!condition() && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 20)); assert(condition(), message) }
+const button = name => [...fixture.querySelectorAll("button")].find(element => element.getAttribute("aria-label") === name || element.textContent.trim() === name)
+const click = element => { assert(element && !element.disabled, "Missing enabled control"); flushSync(() => element.click()) }
+const operationsAddress = () => fixture.querySelector('[aria-label="运维浏览器地址栏"]')
+const write = value => flushSync(() => { const input = operationsAddress(); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, value); input.dispatchEvent(new Event("input", { bubbles: true })) })
+const submit = () => flushSync(() => operationsAddress().closest("form").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })))
+const tab = label => [...fixture.querySelectorAll('[role="tab"]')].find(element => { const copy = element.cloneNode(true); copy.querySelectorAll('[aria-hidden="true"]').forEach(node => node.remove()); return copy.textContent.trim() === label })
+try {
+ flushSync(() => root.render(React.createElement(React.StrictMode, null, React.createElement(Harness))))
+ click(button("打开运维浏览器"))
+ await until(() => bounds.at(-1)?.width > 0, "Manual native page must receive visible bounds")
+ assert(!operationsAddress().disabled, "An Agent task must not disable manual operations")
+ write("https://ops.test/draft")
+ update({ browserRequest: 1, browserThreadId: "another-agent", browser: page("https://other-chrome.test/") })
+ await new Promise(resolve => setTimeout(resolve, 80))
+ assert(tab("运维浏览器").getAttribute("aria-selected") === "true" && operationsAddress().value === "https://ops.test/draft", "Agent browser requests must not steal the manual tab or its draft")
+ assert(bounds.at(-1)?.width > 0, "Agent events must leave the manual native page visible")
+ assert(tab("Chrome"), "Agent requests must still create the independent Chrome tab")
+ pending = Promise.withResolvers(); submit(); submit()
+ assert(calls.filter(call => call[0] === "operations").length === 1 && operationsAddress().disabled, "Repeated manual submits must not create concurrent navigations")
+ pending.resolve(); pending = undefined
+ await until(() => !operationsAddress().disabled, "Manual navigation did not settle")
+ assert(snapshot.browser.url === "https://other-chrome.test/" && snapshot.task.runId === task.runId, "Manual navigation must preserve Agent page and task")
+ click(button("运维浏览器后退"))
+ await until(() => !operationsAddress().disabled && operationsAddress().value === "https://ops.test/", "Manual back must display the actual page URL rather than an earlier address draft")
+ const dialog = document.createElement("div"); dialog.role = "dialog"; dialog.textContent = "Dialog"; document.body.append(dialog)
+ await until(() => bounds.at(-1) === null, "Application dialogs must cover the native page safely")
+ dialog.remove(); await until(() => bounds.at(-1)?.width > 0, "Closing dialogs must reveal the same manual page")
+ const menu = document.createElement("div"); menu.role = "menu"; menu.textContent = "Menu"; document.body.append(menu)
+ await until(() => bounds.at(-1) === null, "Application menus must hide the native page")
+ menu.dataset.state = "closed"; await until(() => bounds.at(-1)?.width > 0, "Closed menu portals must not hide the native page")
+ menu.remove()
+ if (innerWidth >= 768) {
+  const width = bounds.at(-1).width
+  flushSync(() => fixture.querySelector('[role="separator"]').dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true })))
+  await until(() => bounds.at(-1)?.width > width, "Manual native bounds must follow panel resizing")
+ }
+ click(tab("Chrome")); await until(() => bounds.at(-1) === null, "Chrome tab must hide only the manual surface")
+ click(button("显示 Chrome")); assert(calls.at(-1)[0] === "chrome-select" && calls.at(-1)[2].focus === true, "Chrome focus must retain its independent route")
+ click(tab("运维浏览器")); await until(() => bounds.at(-1)?.width > 0, "Returning to operations must restore its viewport")
+ assert(operationsAddress().value === "https://ops.test/", "Manual URL must survive tab and Agent thread changes")
+ fail = true; write("https://ops.test/retry"); submit()
+ await until(() => fixture.textContent.includes("运维导航失败") && !operationsAddress().disabled, "Manual errors must retain retryable input")
+ assert(operationsAddress().value === "https://ops.test/retry", "Failed manual navigation must retain the draft")
+ fail = false; submit(); await until(() => snapshot.operationsBrowser.url === "https://ops.test/retry" && !operationsAddress().disabled, "Manual retry must use only its operations channel")
+ click(button("收起工作台")); await until(() => bounds.at(-1) === null, "Collapsed operations must hide the native page")
+ flushSync(() => setOpen(true)); await until(() => bounds.at(-1)?.width > 0, "Reopening operations must preserve the page")
+ if (innerWidth < 768) { const rect = fixture.querySelector("aside").getBoundingClientRect(); assert(rect.left >= 0 && rect.right <= innerWidth + 1, "Manual operations must fit a narrow viewport") }
+ assert(!calls.some(call => call[0] === "chrome-navigate"), "Manual operations must never navigate Agent Chrome")
+ flushSync(() => root.unmount()); await until(() => bounds.at(-1) === null, "Unmount must hide the native surface")
+ result.textContent = "PASS: manual/Agent page isolation, concurrent task input, Agent requests retain manual tab and draft, viewport bounds, dialogs/menus, tab/collapse cleanup, navigation failure/retry, narrow layout"
+ result.dataset.status = "passed"
+} catch(error) { result.textContent = `FAIL: ${error.stack}`; result.dataset.status = "failed"; throw error }
+</script>

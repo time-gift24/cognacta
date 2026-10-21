@@ -1,0 +1,54 @@
+<!doctype html>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>External Chrome view regression</title>
+<div id="fixture" style="width: min(100%, 480px); height: 560px"></div>
+<pre id="result">Running…</pre>
+<script type="module">
+  import React from "react"
+  import { createRoot } from "react-dom/client"
+  import { flushSync } from "react-dom"
+  import "/src/index.css"
+  import { BrowserView } from "/src/components/workbench/browser-view.tsx"
+
+  const fixture = document.querySelector("#fixture")
+  const result = document.querySelector("#result")
+  const root = createRoot(fixture)
+  const browser = { url: "https://example.com/", title: "Actual page", status: "ready", canGoBack: false, canGoForward: false }
+  let shown = 0, retried = 0
+  const render = (props = {}) => flushSync(() => root.render(React.createElement(BrowserView, {
+    browser, simulated: false, canRetry: true,
+    onRetry() { retried++ }, onShowChrome() { shown++ }, ...props,
+  })))
+  const assert = (value, message) => { if (!value) throw new Error(message) }
+  try {
+    render()
+    assert(fixture.textContent.includes("页面已在 Chrome 中打开"), "Ready pages must identify their external window")
+    assert(fixture.textContent.includes("你也可以直接操作该窗口"), "Manual operation must remain available in Chrome")
+    assert(!fixture.querySelector("iframe"), "External pages must not embed a second browser")
+    fixture.querySelector("button").click()
+    assert(shown === 1, "Show Chrome must focus the selected page")
+    render({ browser: { ...browser, status: "loading" } })
+    assert(fixture.textContent.includes("正在加载页面"), "Loading state must remain visible")
+    fixture.querySelector("button").click()
+    assert(shown === 2, "Chrome must remain accessible during loading")
+    render({ browser: { ...browser, status: "empty", url: "" } })
+    fixture.querySelector("button").click()
+    assert(shown === 3, "An empty Chrome page can be opened")
+    render({ browser: { ...browser, status: "error", error: "Load failed" } })
+    assert(fixture.textContent.includes("Load failed"), "Page failures must remain visible")
+    fixture.querySelector("button").click()
+    assert(retried === 1, "Retry must call the runtime reload action")
+    render({ canRetry: false, browser: { ...browser, status: "error" } })
+    assert(fixture.querySelector("button").disabled, "Busy pages must prevent repeated retries")
+    render({ simulated: true, browser: { ...browser, preview: { heading: "Preview", text: "Still simulated" } } })
+    assert(fixture.textContent.includes("模拟浏览器") && fixture.textContent.includes("Still simulated"), "Simulated previews must remain explicit")
+    assert(!fixture.querySelector("button"), "Simulated previews must not launch Chrome")
+    result.textContent = "PASS: external Chrome status, focus, loading, empty page, retry, simulated preview"
+    result.dataset.status = "passed"
+  } catch (error) {
+    result.textContent = `FAIL: ${error.stack}`
+    result.dataset.status = "failed"
+    throw error
+  } finally { flushSync(() => root.unmount()) }
+</script>
