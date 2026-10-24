@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { useSessions } from "./session-provider";
 import { Conversation } from "./conversation";
@@ -9,24 +10,25 @@ import type { MessageContext } from "./types";
 
 export function WorkspacePage({ sessionId }: { sessionId?: string }) {
   const store = useSessions();
+  const t = useTranslations("Chat");
   const [value, setValue] = useState("");
   const session = store.sessions.find((item) => item.id === sessionId);
 
   if (!store.ready)
     return (
       <p role="status" className="p-16 text-sm text-muted-foreground">
-        Loading workspace…
+        {t("loading")}
       </p>
     );
   if (sessionId && !session)
     return (
       <div className="grid h-full place-content-center gap-3 text-center">
-        <h1 className="text-xl font-medium">Chat not found</h1>
+        <h1 className="text-xl font-medium">{t("notFound")}</h1>
         <p className="text-sm text-muted-foreground">
-          This chat may have been deleted or belongs to another browser.
+          {t("notFoundHint")}
         </p>
         <Link href="/" className="text-sm text-primary underline">
-          Start a new chat
+          {t("startNew")}
         </Link>
       </div>
     );

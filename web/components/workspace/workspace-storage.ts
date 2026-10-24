@@ -1,7 +1,11 @@
-import { initialSessions, projects as initialProjects } from "./config";
 import type { MessageContext, Project, Session } from "./types";
 
-export const WORKSPACE_KEY = "pair.workspace.v2";
+export const WORKSPACE_KEY = "cognacta.workspace.v2";
+
+export type WorkspaceSeeds = {
+  sessions: Session[];
+  projects: Project[];
+};
 
 function isContext(value: unknown): value is MessageContext {
   if (!value || typeof value !== "object") return false;
@@ -43,16 +47,17 @@ function isProject(value: unknown): value is Project {
   return typeof project.id === "string" && typeof project.title === "string";
 }
 
-export function readWorkspace(storage: Storage): {
-  sessions: Session[];
-  projects: Project[];
-} {
-  const current = storage.getItem(WORKSPACE_KEY);
-  const stored = current ?? storage.getItem("pair.sessions.v1");
-  if (!stored) return { sessions: initialSessions, projects: initialProjects };
+export function readWorkspace(
+  storage: Storage,
+  seeds: WorkspaceSeeds,
+): WorkspaceSeeds {
+  const stored = storage.getItem(WORKSPACE_KEY);
+  if (!stored) return seeds;
+
   const data = JSON.parse(stored);
-  const sessions: unknown = current ? data?.sessions : data;
-  const projects: unknown = current ? data?.projects : initialProjects;
+  const sessions: unknown = data?.sessions;
+  const projects: unknown = data?.projects;
+
   if (
     !Array.isArray(sessions) ||
     !sessions.every(isSession) ||
@@ -65,22 +70,19 @@ export function readWorkspace(storage: Storage): {
     new Set(projects.map((item) => item.id)).size !== projects.length
   )
     throw new Error("Duplicate workspace IDs");
+
   return {
     projects,
-    sessions: sessions.map((session) => {
-      // Migrate legacy project flags and discard retired fields without changing URLs.
-      const legacy = session as Session & { project?: boolean };
-      const projectId =
-        session.projectId ?? (legacy.project ? session.id : undefined);
-      return {
-        id: session.id,
-        title: session.title,
-        messages: session.messages,
-        archived: session.archived,
-        projectId: projects.some((project) => project.id === projectId)
-          ? projectId
-          : undefined,
-      };
-    }),
+    sessions: sessions.map((session) => ({
+      id: session.id,
+      title: session.title,
+      messages: session.messages,
+      archived: session.archived,
+      projectId: projects.some(
+        (project) => project.id === session.projectId,
+      )
+        ? session.projectId
+        : undefined,
+    })),
   };
 }

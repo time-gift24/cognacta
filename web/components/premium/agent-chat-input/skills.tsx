@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Box, Check } from "@/components/icons";
 import { motion } from "motion/react";
 import { SPRING_LAYOUT } from "@/lib/ease";
@@ -36,6 +37,7 @@ export function SkillSelector({
   onActiveIndexChange,
   onSelect,
 }: SkillSelectorProps) {
+  const t = useTranslations("Composer");
   return (
     <motion.div
       key="skill-selector"
@@ -46,7 +48,7 @@ export function SkillSelector({
       className="-top-2 absolute right-2 left-2 z-[70] max-h-80 -translate-y-full overflow-hidden rounded-2xl border border-border-strong/50 bg-background/20 p-1.5 shadow-[0_16px_48px_-28px_rgb(0_0_0_/_0.55),inset_0_1px_0_rgb(255_255_255_/_0.06),inset_0_0_22px_-18px_color-mix(in_oklch,var(--foreground)_32%,transparent)] backdrop-blur-xl"
     >
       <p className="px-2 py-1.5 font-medium text-muted-foreground text-xs">
-        Skills
+        {t("skills")}
       </p>
       <div className="max-h-64 overflow-y-auto">
         {skills.length > 0 ? (
@@ -82,7 +84,7 @@ export function SkillSelector({
                   <Check className="size-4 shrink-0 text-accent" />
                 ) : (
                   <span className="shrink-0 text-muted-foreground">
-                    Personal
+                    {t("personal")}
                   </span>
                 )}
               </button>
@@ -90,7 +92,7 @@ export function SkillSelector({
           })
         ) : (
           <p className="px-2 py-3 text-muted-foreground text-sm">
-            No matching skills
+            {t("noSkills")}
           </p>
         )}
       </div>

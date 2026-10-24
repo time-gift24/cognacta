@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { FileText, X } from "@/components/icons";
 import { AnimatePresence, motion } from "motion/react";
 import { SPRING_PANEL, SPRING_PRESS, SPRING_SWAP } from "@/lib/ease";
@@ -19,6 +20,7 @@ export function CreditsAttachmentTray({
   onPreview: (id: string) => void;
   onRemove: (id: string) => void;
 }) {
+  const t = useTranslations("Composer");
   return (
     <AnimatePresence initial={false}>
       {attachments.length > 0 ? (
@@ -48,7 +50,7 @@ export function CreditsAttachmentTray({
                   {image && imageUrl ? (
                     <button
                       type="button"
-                      aria-label={`Preview ${attachment.name}`}
+                      aria-label={t("previewFile", { name: attachment.name })}
                       onClick={() => onPreview(attachment.id)}
                       className="size-7 shrink-0 overflow-hidden rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
@@ -69,7 +71,7 @@ export function CreditsAttachmentTray({
                   </span>
                   <motion.button
                     type="button"
-                    aria-label={`Remove ${attachment.name}`}
+                    aria-label={t("removeFile", { name: attachment.name })}
                     onClick={() => onRemove(attachment.id)}
                     whileTap={reduce ? undefined : { scale: 0.92 }}
                     transition={SPRING_PRESS}

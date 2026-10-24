@@ -18,12 +18,18 @@ export function IntegrationMark({
     >
       <span
         aria-hidden="true"
-        style={{ backgroundImage: `url("${integration.logoUrl}")` }}
-        className={cn(
-          "size-[46%] bg-center bg-contain bg-no-repeat",
-          integration.logoMode !== "color" &&
-            "integration-adaptive-mark brightness-0 invert",
-        )}
+        style={{
+          backgroundColor: "currentColor",
+          WebkitMaskImage: `url("${integration.logoUrl}")`,
+          maskImage: `url("${integration.logoUrl}")`,
+          WebkitMaskPosition: "center",
+          maskPosition: "center",
+          WebkitMaskRepeat: "no-repeat",
+          maskRepeat: "no-repeat",
+          WebkitMaskSize: "contain",
+          maskSize: "contain",
+        }}
+        className="size-[46%] text-foreground/70"
       />
     </span>
   );

@@ -1,6 +1,6 @@
-# Cognacta — AI workspace
+# Cognacta — Agent workspace
 
-Cognacta's responsive agent workspace, built on the beUI Pair template, with
+Cognacta's responsive agent workspace, built with beUI components, with
 light/dark/system themes, project management, searchable conversations, archives,
 a knowledge base, integrations previews, and the beUI Credits composer.
 
@@ -35,7 +35,7 @@ bun run preview
 bun run deploy
 ```
 
-The included OpenNext configuration deploys a dedicated `pair-ai-workspace`
+The included OpenNext configuration deploys a dedicated `cognacta-web`
 Worker with static assets. Change `name` in `wrangler.jsonc` for your own account.
 No database, secrets, or AI API keys are needed for the demo. Do not deploy the
 app as a static Pages export: new chat URLs require the Next.js runtime.
@@ -52,6 +52,15 @@ app as a static Pages export: new chat URLs require the Next.js runtime.
 | `/integrations` | Browse simulated app connections |
 | `/settings` | Theme and local personalization preferences |
 | `/help` | User-facing guide and demo limitations |
+
+## Localization
+
+The workspace defaults to Chinese (`zh`) and ships an English (`en`) mirror.
+[next-intl](https://next-intl.dev) loads messages from `messages/zh.json` and
+`messages/en.json`; `i18n/request.ts` reads the `cognacta.locale` cookie, so
+there is no locale URL prefix and every deep link keeps its path. Switch the
+language in **Settings → Appearance → Language**. Server components re-render on
+switch, and untouched demo content is re-seeded in the new language.
 
 ## Code organization
 
@@ -86,22 +95,19 @@ app as a static Pages export: new chat URLs require the Next.js runtime.
 - Connections, model/skill selection, web search, credits, and assistant replies
   are demonstration state. They do not make model, search, OAuth, or billing calls.
 
-## Persistence and migration
+## Persistence
 
 | Storage key | Contents |
 | --- | --- |
-| `pair.workspace.v2` | Projects and sessions, including message context |
-| `pair.knowledge.v1` | Notes and reference links |
-| `pair.integrations.v1` | Simulated connected app IDs |
-| `pair.preferences.v1` | Response style and custom instructions |
-| `pair.theme.v1` | Light, dark, or system preference |
+| `cognacta.workspace.v2` | Projects and sessions, including message context |
+| `cognacta.knowledge.v1` | Notes and reference links |
+| `cognacta.integrations.v1` | Simulated connected app IDs |
+| `cognacta.preferences.v1` | Response style and custom instructions |
+| `cognacta.theme.v1` | Light, dark, or system preference |
 
-The `pair.*` namespace is kept for storage and migration compatibility; it is
-internal and does not appear in the interface.
-
-On first use, the workspace migrates `pair.sessions.v1` into the v2 record without
-changing session IDs. The old key is retained for recovery. Projects and sessions
-are saved together so project deletion cannot leave partially saved membership.
+All keys use the `cognacta.*` namespace. The selected language is stored in the
+`cognacta.locale` cookie, not in local storage. Projects and sessions are saved
+together so project deletion cannot leave partially saved membership.
 Unreadable workspace data is not overwritten with demo defaults; the UI shows a
 storage warning. All storage is browser-local, unencrypted, and not synchronized.
 Do not enter sensitive data into the preview. Clearing site data is destructive.

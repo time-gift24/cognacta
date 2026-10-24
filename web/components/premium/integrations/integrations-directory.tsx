@@ -1,5 +1,6 @@
 "use client";
 import { Input } from "@/components/form-fields";
+import { useTranslations } from "next-intl";
 
 import { useEffect, useId, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
@@ -16,15 +17,19 @@ import { DEFAULT_INTEGRATIONS, type IntegrationItem } from "./integration-data";
 import { IntegrationMark } from "./integration-mark";
 import { IntegrationDetails } from "./integration-details";
 
-const STORAGE_KEY = "pair.integrations.v1";
+const STORAGE_KEY = "cognacta.integrations.v1";
 
 // Adapted from the beUI Integrations Directory block for the Cognacta workspace.
 export function IntegrationsDirectory() {
   const reduce = useReducedMotion();
   const tabId = useId();
+  const t = useTranslations("Integrations");
+  const categoryLabel = (value: string) =>
+    value === "all" ? t("allCategories") : t(`categories.${value}`);
+  const description = (app: IntegrationItem) => t(`items.${app.id}`);
   const [query, setQuery] = useState("");
   const [view, setView] = useState<"all" | "connected">("all");
-  const [category, setCategory] = useState("All categories");
+  const [category, setCategory] = useState("all");
   const [connected, setConnected] = useState<string[]>([]);
   const [ready, setReady] = useState(false);
   const [storageError, setStorageError] = useState(false);
@@ -63,8 +68,8 @@ export function IntegrationsDirectory() {
   const visible = DEFAULT_INTEGRATIONS.filter(
     (app) =>
       (view === "all" || connected.includes(app.id)) &&
-      (category === "All categories" || app.category === category) &&
-      `${app.name} ${app.description}`
+      (category === "all" || app.category === category) &&
+      `${app.name} ${description(app)} ${t(`categories.${app.category}`)}`
         .toLowerCase()
         .includes(query.trim().toLowerCase()),
   );
@@ -78,7 +83,9 @@ export function IntegrationsDirectory() {
         : [...items, selected.id],
     );
     setNotice(
-      `${selected.name} ${wasConnected ? "disconnected" : "connected"} in this demo.`,
+      wasConnected
+        ? t("disconnectedNotice", { name: selected.name })
+        : t("connectedNotice", { name: selected.name }),
     );
     setDialogOpen(false);
   }
@@ -87,20 +94,20 @@ export function IntegrationsDirectory() {
     <div className="mx-auto w-full max-w-5xl px-5 pt-20 pb-10 sm:px-8 lg:pt-12">
       <header>
         <p className="mb-2 text-xs text-muted-foreground">
-          Workspace / Connected apps
+          {t("breadcrumb")}
         </p>
         <h1 className="text-2xl font-semibold tracking-tight">
-          Connected apps
+          {t("title")}
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Bring your tools into the conversation.
+          {t("subtitle")}
         </p>
       </header>
 
       <div className="mt-8 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div
           role="group"
-          aria-label="Integration view"
+          aria-label={t("view")}
           className="inline-flex self-start rounded-full bg-surface-raised p-1"
         >
           {(["all", "connected"] as const).map((value) => (
@@ -118,19 +125,19 @@ export function IntegrationsDirectory() {
                   className="absolute inset-0 -z-10 rounded-full bg-surface-active"
                 />
               ) : null}
-              {value === "all" ? "All apps" : `Connected (${connected.length})`}
+              {value === "all" ? t("allApps") : t("connectedCount", { count: connected.length })}
             </button>
           ))}
         </div>
         <div className="flex w-full items-center gap-2 xl:w-auto">
           <label className="relative min-w-0 flex-1 xl:w-56">
-            <span className="sr-only">Search apps</span>
+            <span className="sr-only">{t("search")}</span>
             <Search className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               type="search"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search apps"
+              placeholder={t("search")}
               className="rounded-full pr-4 pl-10"
             />
           </label>
@@ -138,10 +145,10 @@ export function IntegrationsDirectory() {
             <AnimatedDropdownTrigger asChild>
               <button
                 type="button"
-                aria-label={`Filter by category: ${category}`}
+                aria-label={t("filterByCategory", { category: categoryLabel(category) })}
                 className="inline-flex h-11 shrink-0 items-center gap-2 rounded-full border border-border bg-background px-3.5 text-xs text-muted-foreground hover:bg-surface-raised focus-visible:outline-2 focus-visible:outline-primary"
               >
-                {category}
+                {categoryLabel(category)}
                 <ChevronDown className="size-3.5" />
               </button>
             </AnimatedDropdownTrigger>
@@ -151,11 +158,11 @@ export function IntegrationsDirectory() {
                 onValueChange={setCategory}
               >
                 {[
-                  "All categories",
+                  "all",
                   ...new Set(DEFAULT_INTEGRATIONS.map((app) => app.category)),
                 ].map((name) => (
                   <AnimatedDropdownRadioItem key={name} value={name}>
-                    {name}
+                    {categoryLabel(name)}
                   </AnimatedDropdownRadioItem>
                 ))}
               </AnimatedDropdownRadioGroup>
@@ -191,15 +198,15 @@ export function IntegrationsDirectory() {
                   {connected.includes(app.id) ? (
                     <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] text-primary">
                       <Check className="size-3" />
-                      Connected
+                      {t("connected")}
                     </span>
                   ) : null}
                 </span>
                 <span className="mt-1 block text-xs leading-5 text-muted-foreground">
-                  {app.description}
+                  {description(app)}
                 </span>
                 <span className="mt-2 inline-flex rounded-full border border-border bg-surface-raised px-2 py-0.5 text-[10px] leading-4 text-muted-foreground">
-                  {app.category}
+                  {t(`categories.${app.category}`)}
                 </span>
               </span>
               <ChevronRight className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
@@ -211,30 +218,27 @@ export function IntegrationsDirectory() {
         <div className="py-16 text-center">
           <p className="text-sm">
             {view === "connected" && !connected.length
-              ? "No apps connected yet"
-              : "No matching apps"}
+              ? t("noConnected")
+              : t("noMatch")}
           </p>
           <button
             type="button"
             onClick={() => {
               setQuery("");
-              setCategory("All categories");
+              setCategory("all");
               setView("all");
             }}
             className="mt-3 min-h-10 rounded-full px-4 text-sm text-primary focus-visible:outline-2 focus-visible:outline-primary"
           >
-            Browse all apps
+            {t("browseAll")}
           </button>
         </div>
       ) : null}
       <p className="mt-6 text-xs text-muted-foreground">
-        Template preview. Connections are simulated; no external account access
-        is requested.
+        {t("footnote")}
       </p>
       <p role="status" className="mt-2 text-xs text-muted-foreground">
-        {storageError
-          ? "Browser storage is unavailable; changes may not survive a refresh."
-          : notice}
+        {storageError ? t("storageError") : notice}
       </p>
       {selected ? (
         <IntegrationDetails

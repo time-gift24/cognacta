@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { ChevronDown } from "@/components/icons";
 import { type HTMLMotionProps, motion, useReducedMotion } from "motion/react";
 import {
@@ -292,8 +293,8 @@ export function MessageBubbleCollapsible({
   defaultOpen = false,
   onOpenChange,
   collapsedLines = 4,
-  moreLabel = "Show more",
-  lessLabel = "Show less",
+  moreLabel,
+  lessLabel,
   contentClassName,
   triggerClassName,
   className,
@@ -301,6 +302,9 @@ export function MessageBubbleCollapsible({
   ...props
 }: MessageBubbleCollapsibleProps) {
   const reduce = useReducedMotion() ?? false;
+  const t = useTranslations("Chat");
+  const resolvedMoreLabel = moreLabel ?? t("showMore");
+  const resolvedLessLabel = lessLabel ?? t("showLess");
   const contentId = useId();
   const notifyLayout = useContext(MessageBubbleLayoutContext);
   const [internalOpen, setInternalOpen] = useState(defaultOpen);
@@ -344,7 +348,7 @@ export function MessageBubbleCollapsible({
           triggerClassName,
         )}
       >
-        <span>{currentOpen ? lessLabel : moreLabel}</span>
+        <span>{currentOpen ? resolvedLessLabel : resolvedMoreLabel}</span>
         <motion.span
           aria-hidden="true"
           animate={{ rotate: currentOpen ? 180 : 0 }}

@@ -1,6 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { useTranslations } from "next-intl";
 import { Search } from "@/components/icons";
 import type { ComponentType } from "react";
 import {
@@ -65,11 +66,14 @@ const PANEL_SPRING = {
 export function CommandPalette({
   items,
   shortcut = "k",
-  placeholder = "Type a command or search…",
-  emptyMessage = "No results found.",
+  placeholder,
+  emptyMessage,
   open: controlledOpen,
   onOpenChange,
 }: CommandPaletteProps) {
+  const t = useTranslations("Search");
+  const resolvedPlaceholder = placeholder ?? t("typeCommand");
+  const resolvedEmptyMessage = emptyMessage ?? t("noResults");
   const [internalOpen, setInternalOpen] = useState(false);
   const controlled = controlledOpen !== undefined;
   const open = controlled ? controlledOpen : internalOpen;
@@ -209,7 +213,7 @@ export function CommandPalette({
           {({ gate }) => (
             <motion.button
               type="button"
-              aria-label="Close command palette"
+              aria-label={t("close")}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{
@@ -237,7 +241,7 @@ export function CommandPalette({
               <motion.div
                 role="dialog"
                 aria-modal="true"
-                aria-label="Command palette"
+                aria-label={t("dialog")}
                 initial={{
                   opacity: 0,
                   y: reduce ? 0 : -8,
@@ -261,7 +265,7 @@ export function CommandPalette({
                     ref={inputRef}
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    placeholder={placeholder}
+                    placeholder={resolvedPlaceholder}
                     role="combobox"
                     // The field only exists while the palette is open.
                     aria-expanded="true"
@@ -288,12 +292,12 @@ export function CommandPalette({
                   ref={listRef}
                   id={`${uid}-list`}
                   role="listbox"
-                  aria-label="Commands"
+                  aria-label={t("commands")}
                   className="max-h-[60vh] overflow-y-auto overscroll-contain p-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                 >
                   {rows.length === 0 ? (
                     <div className="p-8 text-center text-sm text-muted-foreground">
-                      {emptyMessage}
+                      {resolvedEmptyMessage}
                     </div>
                   ) : (
                     grouped.map(([group, list]) => (

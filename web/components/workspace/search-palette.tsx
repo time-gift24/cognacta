@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { CommandPalette } from "@/components/motion/command-palette";
 import { Folder, MessageCircle, Archive } from "@/components/icons";
 import { useSessions } from "./session-provider";
@@ -14,21 +15,22 @@ export function SearchPalette({
   onSelectThread: (id: string) => void;
 }) {
   const { sessions, projects } = useSessions();
+  const t = useTranslations("Search");
   return (
     <CommandPalette
       open={open}
       onOpenChange={onOpenChange}
-      placeholder="Search projects and conversations"
-      emptyMessage="No conversations found."
+      placeholder={t("placeholder")}
+      emptyMessage={t("empty")}
       items={sessions.map((session) => ({
         id: session.id,
         label: session.title,
         group: session.archived
-          ? "Archived"
+          ? t("archived")
           : session.projectId
             ? (projects.find((project) => project.id === session.projectId)
-                ?.title ?? "Projects")
-            : "Recent chats",
+                ?.title ?? t("projects"))
+            : t("recentChats"),
         icon: session.archived
           ? Archive
           : session.projectId

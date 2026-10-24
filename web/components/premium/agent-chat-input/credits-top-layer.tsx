@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Box, Check, X } from "@/components/icons";
 import { AnimatePresence, motion } from "motion/react";
 import { SPRING_PANEL } from "@/lib/ease";
@@ -31,6 +32,7 @@ export function CreditsTopLayer({
   onSelect: (skillId: string) => void;
   onUpgrade?: () => void;
 }) {
+  const t = useTranslations("Composer");
   const visibleRows = Math.min(Math.max(skills.length, 1), 4);
   const expandedHeight = 44 + visibleRows * 36;
   const collapsedHeight = compact ? 0 : 36;
@@ -60,7 +62,7 @@ export function CreditsTopLayer({
               className="absolute inset-x-0 bottom-0 p-2"
             >
               <p className="px-1 pb-1.5 font-medium text-muted-foreground text-xs">
-                Skills
+                {t("skills")}
               </p>
               <div className="flex max-h-44 flex-col overflow-y-auto">
                 {skills.length > 0 ? (
@@ -98,7 +100,7 @@ export function CreditsTopLayer({
                   })
                 ) : (
                   <p className="px-2 py-3 text-muted-foreground text-sm">
-                    No matching skills
+                    {t("noSkills")}
                   </p>
                 )}
               </div>
@@ -113,7 +115,7 @@ export function CreditsTopLayer({
             transition={reduce ? { duration: 0 } : SPRING_PANEL}
             className="absolute inset-0 flex items-center justify-between gap-3 px-3 text-muted-foreground text-sm sm:px-3.5"
           >
-            <span>{creditsRemaining} Credits Remaining</span>
+            <span>{t("credits", { count: creditsRemaining })}</span>
             <div className="flex items-center gap-2.5">
               {onUpgrade && (
                 <button
@@ -121,13 +123,13 @@ export function CreditsTopLayer({
                   onClick={onUpgrade}
                   className="font-medium text-foreground transition-opacity hover:opacity-70 focus-visible:rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  Upgrade
+                  {t("upgrade")}
                 </button>
               )}
               {onDismiss && (
                 <button
                   type="button"
-                  aria-label="Dismiss credits notice"
+                  aria-label={t("dismissCredits")}
                   onClick={onDismiss}
                   className="grid size-6 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { EASE_OUT } from "@/lib/ease";
 import { PresenceGate } from "@/lib/presence-gate";
@@ -18,6 +19,7 @@ export function ProjectGroup({
   onSelectSession: (id: string) => void;
 }) {
   const { sessions, createProjectSession } = useSessions();
+  const t = useTranslations("Projects");
   const reduce = useReducedMotion();
   const children = sessions.filter(
     (session) => session.projectId === project.id && !session.archived,
@@ -84,14 +86,14 @@ export function ProjectGroup({
                   ))}
                   <button
                     type="button"
-                    aria-label={`New chat in ${project.title}`}
+                    aria-label={t("newChatIn", { project: project.title })}
                     onClick={() => {
                       const id = createProjectSession(project.id);
                       if (id) onSelectSession(id);
                     }}
                     className="flex h-8 w-full items-center gap-2 rounded-md px-3 text-xs text-muted-foreground hover:bg-surface-active hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary"
                   >
-                    <Plus className="size-3.5" /> New chat
+                    <Plus className="size-3.5" /> {t("newChat")}
                   </button>
                 </motion.div>
               )}

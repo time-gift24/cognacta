@@ -8,6 +8,7 @@ import {
 import { useId } from "react";
 import { Dialog, DialogPanel } from "@headlessui/react";
 import { usePathname, useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import {
   Search,
   PanelLeft,
@@ -18,7 +19,7 @@ import {
 } from "@/components/icons";
 import { EASE_OUT, SPRING_SWAP, SPRING_PANEL } from "@/lib/ease";
 import { ProfileMenu } from "../profile-menu";
-import { modes } from "./config";
+import { modeDefs } from "./config";
 import { ProjectGroup } from "./project-group";
 import type { Mode } from "./types";
 import { useSessions } from "./session-provider";
@@ -44,6 +45,8 @@ export function SidebarContent({
   const router = useRouter();
   const pathname = usePathname();
   const pillId = useId();
+  const t = useTranslations("Nav");
+  const tModes = useTranslations("Modes");
   const { sessions, projects } = useSessions();
   return (
     <div className="flex h-full w-[248px] flex-col px-2.5 py-3">
@@ -53,11 +56,11 @@ export function SidebarContent({
           onClick={onNewChat}
           className="mr-auto rounded-md font-semibold text-xl tracking-tight focus-visible:outline-2 focus-visible:outline-primary"
         >
-          Cognacta
+          {t("workspaceName")}
         </button>
         <button
           type="button"
-          aria-label="Search conversations"
+          aria-label={t("searchConversations")}
           onClick={onSearch}
           className="grid size-10 place-items-center rounded-lg text-muted-foreground hover:bg-surface-active focus-visible:outline-2 focus-visible:outline-primary"
         >
@@ -65,7 +68,7 @@ export function SidebarContent({
         </button>
         <button
           type="button"
-          aria-label="Collapse sidebar"
+          aria-label={t("collapseSidebar")}
           onClick={onCollapse}
           className="grid size-10 place-items-center rounded-lg text-muted-foreground hover:bg-surface-active focus-visible:outline-2 focus-visible:outline-primary"
         >
@@ -73,18 +76,18 @@ export function SidebarContent({
         </button>
       </div>
       <nav
-        aria-label="Workspace modes"
+        aria-label={t("workspaceModes")}
         className="mb-3 grid shrink-0 grid-cols-3 gap-1"
       >
-        {modes.map(({ label, icon: Icon }) => (
+        {modeDefs.map(({ value, icon: Icon }) => (
           <button
-            key={label}
+            key={value}
             type="button"
-            aria-pressed={mode === label}
-            onClick={() => onModeChange(label)}
-            className={`relative isolate flex h-10 items-center justify-center gap-1 rounded-lg text-xs transition-colors focus-visible:outline-2 focus-visible:outline-primary ${mode === label ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+            aria-pressed={mode === value}
+            onClick={() => onModeChange(value)}
+            className={`relative isolate flex h-10 items-center justify-center gap-1 rounded-lg text-xs transition-colors focus-visible:outline-2 focus-visible:outline-primary ${mode === value ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}
           >
-            {mode === label ? (
+            {mode === value ? (
               <motion.span
                 aria-hidden="true"
                 layoutId={reduce ? undefined : pillId}
@@ -93,47 +96,42 @@ export function SidebarContent({
               />
             ) : null}
             <Icon className="size-3.5" />
-            {label}
+            {tModes(value)}
           </button>
         ))}
       </nav>
-      <nav aria-label="Workspace navigation" className="space-y-0.5">
+      <nav aria-label={t("workspaceNavigation")} className="space-y-0.5">
         {[
-          { label: "New Chat", icon: Plus, onClick: onNewChat },
+          { key: "newChat", icon: Plus, onClick: onNewChat },
           {
-            label: "Knowledge base",
+            key: "knowledgeBase",
             icon: BookOpen,
             onClick: () => router.push("/knowledge-base"),
+            path: "/knowledge-base",
           },
           {
-            label: "Archived chats",
+            key: "archivedChats",
             icon: Archive,
             onClick: () => router.push("/archived"),
+            path: "/archived",
           },
           {
-            label: "Connected apps",
+            key: "connectedApps",
             icon: LayoutGrid,
             onClick: () => router.push("/integrations"),
+            path: "/integrations",
           },
         ].map((item) => (
           <button
-            key={item.label}
+            key={item.key}
             type="button"
             onClick={item.onClick}
-            aria-current={
-              (item.label === "Connected apps" &&
-                pathname === "/integrations") ||
-              (item.label === "Knowledge base" &&
-                pathname === "/knowledge-base") ||
-              (item.label === "Archived chats" && pathname === "/archived")
-                ? "page"
-                : undefined
-            }
+            aria-current={item.path === pathname ? "page" : undefined}
             className="flex h-9 w-full items-center gap-2.5 rounded-lg px-3 text-muted-foreground text-sm transition-colors hover:bg-surface-active hover:text-foreground aria-[current=page]:bg-surface-active aria-[current=page]:text-foreground focus-visible:outline-2 focus-visible:outline-primary"
           >
             <item.icon className="size-4" />
-            {item.label}
-            {item.label === "New Chat" ? (
+            {t(item.key)}
+            {item.key === "newChat" ? (
               <span className="ml-auto font-mono text-[10px] text-faint">
                 ⌘N
               </span>
@@ -145,11 +143,11 @@ export function SidebarContent({
       <div className="scrollbar-none min-h-0 flex-1 overflow-y-auto pb-3">
         <LayoutGroup id={`${pillId}-projects`}>
           <SidebarGroup
-            label="Projects"
+            label={t("projects")}
             action={
               <button
                 type="button"
-                aria-label="Manage projects"
+                aria-label={t("manageProjects")}
                 onClick={() => router.push("/projects")}
                 className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-surface-active focus-visible:outline-2 focus-visible:outline-primary"
               >
@@ -167,7 +165,7 @@ export function SidebarContent({
             ))}
           </SidebarGroup>
 
-          <SidebarGroup label="Recent">
+          <SidebarGroup label={t("recent")}>
             {sessions
               .filter((session) => !session.projectId && !session.archived)
               .map((session) => (
@@ -235,18 +233,19 @@ export function MobileSidebar({
   onSearch: () => void;
 }) {
   const reduce = useReducedMotion();
+  const t = useTranslations("Nav");
   return (
     <AnimatePresence>
       {open ? (
         <Dialog
           open
           onClose={onClose}
-          aria-label="Workspace navigation"
+          aria-label={t("workspaceNavigation")}
           className="fixed inset-0 z-50 lg:hidden"
         >
           <motion.button
             type="button"
-            aria-label="Close navigation"
+            aria-label={t("closeNavigation")}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -255,10 +254,10 @@ export function MobileSidebar({
           />
           <DialogPanel
             className="relative h-full w-[min(85vw,17rem)]"
-            aria-label="Workspace navigation"
+            aria-label={t("workspaceNavigation")}
           >
             <motion.aside
-              aria-label="Workspace navigation"
+              aria-label={t("workspaceNavigation")}
               initial={reduce ? false : { x: -280 }}
               animate={{ x: 0 }}
               exit={reduce ? { opacity: 0 } : { x: -280 }}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef } from "react";
+import { useTranslations } from "next-intl";
 import { AnimatePresence } from "motion/react";
 import {
   Message,
@@ -26,6 +27,7 @@ export function Conversation({
   ...composerProps
 }: ComposerProps & { title: string; messages: ChatMessage[] }) {
   const initialIds = useRef(new Set(messages.map((message) => message.id)));
+  const t = useTranslations("Chat");
   return (
     <div
       role="region"
@@ -34,6 +36,7 @@ export function Conversation({
     >
       <MessageScroller
         label={title}
+        navigationLabel={t("messageNavigation")}
         busy={thinking}
         className="flex-1"
         viewportProps={{ tabIndex: 0 }}
@@ -76,7 +79,7 @@ export function Conversation({
                                   key={item.id}
                                   className="text-xs text-muted-foreground"
                                 >
-                                  File: {item.name} · name only
+                                  {t("fileLabel", { name: item.name })}
                                 </p>
                               ),
                             )}
@@ -103,7 +106,7 @@ export function Conversation({
                 <MessageContent>
                   <MessageTyping
                     role="status"
-                    label="Cognacta is thinking"
+                    label={t("thinking")}
                     className="text-muted-foreground"
                   />
                 </MessageContent>

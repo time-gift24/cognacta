@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { ArrowUp, Mic, Paperclip, Square } from "@/components/icons";
 import { AnimatePresence, motion } from "motion/react";
 import type { ReactNode } from "react";
@@ -39,11 +40,12 @@ export function CreditsToolbar({
   onVoice?: () => void;
   attachControl?: ReactNode;
 }) {
+  const t = useTranslations("Composer");
   return (
     <div className="flex items-center justify-between gap-3 px-1">
       <div className="flex min-w-0 items-center gap-0.5 text-muted-foreground">
         {attachControl ?? (
-          <ActionButton label="Attach files" onClick={onAttach}>
+          <ActionButton label={t("attachFiles")} onClick={onAttach}>
             <Paperclip className="size-[18px]" />
           </ActionButton>
         )}
@@ -63,14 +65,14 @@ export function CreditsToolbar({
 
       <div className="flex shrink-0 items-center gap-1 text-muted-foreground">
         {onVoice && (
-          <ActionButton label="Voice input" onClick={onVoice}>
+          <ActionButton label={t("voiceInput")} onClick={onVoice}>
             <Mic className="size-[18px]" />
           </ActionButton>
         )}
         <motion.button
           type="button"
           disabled={disabled || (!busy && !canSubmit)}
-          aria-label={busy ? "Stop response" : "Send message"}
+          aria-label={busy ? t("stopResponse") : t("sendMessage")}
           onClick={busy ? onStop : onSubmit}
           whileTap={reduce ? undefined : { scale: 0.94 }}
           transition={SPRING_PRESS}

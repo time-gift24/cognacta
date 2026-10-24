@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/motion/button/base";
 import { Input } from "@/components/form-fields";
 import {
@@ -24,6 +25,7 @@ export function NameDialog({
   initialValue?: string;
   onSave: (name: string) => void;
 }) {
+  const t = useTranslations("Dialog");
   const [name, setName] = useState(initialValue);
   useEffect(() => {
     if (open) setName(initialValue);
@@ -51,7 +53,7 @@ export function NameDialog({
         }}
       >
         <label className="mt-5 block text-sm">
-          Name
+          {t("name")}
           <Input
             data-autofocus
             required
@@ -63,10 +65,10 @@ export function NameDialog({
         </label>
         <div className="mt-5 flex justify-end gap-2">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t("cancel")}
           </Button>
           <Button type="submit" disabled={!name.trim()}>
-            Save
+            {t("save")}
           </Button>
         </div>
       </form>

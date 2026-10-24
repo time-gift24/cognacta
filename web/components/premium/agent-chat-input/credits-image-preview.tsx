@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { X } from "@/components/icons";
 import { motion } from "motion/react";
 import { useEffect } from "react";
@@ -18,6 +19,7 @@ export function CreditsImagePreview({
   reduce?: boolean | null;
   onClose: () => void;
 }) {
+  const t = useTranslations("Composer");
   useEffect(() => {
     if (!attachment || !src) return;
 
@@ -35,7 +37,7 @@ export function CreditsImagePreview({
     <motion.div
       role="dialog"
       aria-modal="true"
-      aria-label={`Preview ${attachment.name}`}
+      aria-label={t("previewFile", { name: attachment.name })}
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
       initial={reduce ? false : { opacity: 0 }}
       animate={{ opacity: 1 }}
@@ -52,7 +54,7 @@ export function CreditsImagePreview({
       >
         <button
           type="button"
-          aria-label="Close image preview"
+          aria-label={t("closePreview")}
           onClick={onClose}
           className="absolute top-3 right-3 z-10 grid size-9 place-items-center rounded-full border border-white/15 bg-black/55 text-white backdrop-blur-md transition-colors hover:bg-black/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
         >

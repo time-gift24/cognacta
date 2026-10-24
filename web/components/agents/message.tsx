@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { motion, useReducedMotion } from "motion/react";
 import {
   type ComponentPropsWithRef,
@@ -76,6 +77,7 @@ export function Message({
   ...props
 }: MessageProps) {
   const reduce = useReducedMotion() ?? false;
+  const t = useTranslations("Chat");
 
   return (
     <MessageSideContext.Provider value={from === "user" ? "end" : "start"}>
@@ -83,7 +85,10 @@ export function Message({
         <motion.article
           data-slot="message"
           data-from={from}
-          aria-label={props["aria-label"] ?? `${from} message`}
+          aria-label={
+            props["aria-label"] ??
+            (from === "user" ? t("userMessage") : t("assistantMessage"))
+          }
           initial={
             initial ??
             (animateIn && !reduce
@@ -234,10 +239,12 @@ export function MessageMarker({ className, ...props }: MessageMarkerProps) {
 }
 
 export function MessageTyping({
-  label = "Responding",
+  label,
   className,
   ...props
 }: MessageTypingProps) {
+  const t = useTranslations("Chat");
+  const resolvedLabel = label ?? t("responding");
   const reduce = useReducedMotion() ?? false;
 
   return (
@@ -246,7 +253,7 @@ export function MessageTyping({
       className={cn("inline-flex h-5 items-center gap-1", className)}
       {...props}
     >
-      <span className="sr-only">{label}</span>
+      <span className="sr-only">{resolvedLabel}</span>
       {[0, 1, 2].map((index) => (
         <motion.span
           key={index}

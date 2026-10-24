@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useReducedMotion } from "motion/react";
 import {
   type ComponentPropsWithRef,
@@ -111,10 +112,10 @@ export function MessageScroller({
   followThreshold = 56,
   smooth = true,
   onFollowChange,
-  label = "Conversation",
+  label: labelProp,
   busy,
   navigation,
-  navigationLabel = "Message navigation",
+  navigationLabel: navigationLabelProp,
   viewportClassName,
   contentClassName,
   railClassName,
@@ -125,6 +126,9 @@ export function MessageScroller({
   children,
   ...props
 }: MessageScrollerProps) {
+  const t = useTranslations("Chat");
+  const label = labelProp ?? t("conversation");
+  const navigationLabel = navigationLabelProp ?? t("messageNavigation");
   const reduce = useReducedMotion() ?? false;
   const viewportRef = useRef<HTMLElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);

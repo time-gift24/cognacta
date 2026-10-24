@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-25T00:53:24+08:00",
+  "generatedAt": "2026-10-25T01:16:44+08:00",
   "title": "Design System: Cognacta Graphite",
   "extensions": {
     "colorMeta": {
@@ -285,7 +285,7 @@
       "kind": "button",
       "refersTo": "button-send",
       "description": "36px 电光蓝圆形发送键，只在 composer 右侧出现；白色箭头是图形，按 3:1 判定。",
-      "html": "<button class=\"ds-send\" type=\"button\" aria-label=\"Send message\"><svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.4\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M12 19V5M5 12l7-7 7 7\"/></svg></button>",
+      "html": "<button class=\"ds-send\" type=\"button\" aria-label=\"发送消息\"><svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.4\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M12 19V5M5 12l7-7 7 7\"/></svg></button>",
       "css": ".ds-send{display:grid;place-items:center;width:36px;height:36px;border:0;border-radius:9999px;background:var(--primary,#1688ff);color:var(--primary-foreground,#fff);cursor:pointer;transition:opacity .16s cubic-bezier(.16,1,.3,1),transform .16s cubic-bezier(.16,1,.3,1)}.ds-send:hover{opacity:.85}.ds-send:active{transform:scale(.97)}.ds-send:focus-visible{outline:2px solid var(--ring,#1688ff);outline-offset:2px}"
     },
     {
@@ -293,7 +293,7 @@
       "kind": "button",
       "refersTo": "button-primary",
       "description": "40px 全圆角实底按钮；承载白字时使用 primary-strong，保证 ≥4.5:1。",
-      "html": "<button class=\"ds-btn-primary\" type=\"button\">Save preferences</button>",
+      "html": "<button class=\"ds-btn-primary\" type=\"button\">保存偏好</button>",
       "css": ".ds-btn-primary{display:inline-flex;align-items:center;justify-content:center;height:40px;padding:0 20px;border:0;border-radius:9999px;background:var(--primary-strong,#0b72e0);color:var(--primary-foreground,#fff);font:500 14px/1.4 Geist,ui-sans-serif,system-ui,sans-serif;cursor:pointer;transition:background-color .16s cubic-bezier(.16,1,.3,1)}.ds-btn-primary:hover{background:color-mix(in srgb,var(--primary-strong,#0b72e0) 90%,transparent)}.ds-btn-primary:focus-visible{outline:2px solid var(--primary,#1688ff);outline-offset:2px}.ds-btn-primary:disabled{cursor:not-allowed;opacity:.5}"
     },
     {
@@ -301,7 +301,7 @@
       "kind": "button",
       "refersTo": "button-danger",
       "description": "44px 全圆角破坏性实底按钮；danger-strong 配白字，只用于不可逆确认。",
-      "html": "<button class=\"ds-btn-danger\" type=\"button\">Delete chat</button>",
+      "html": "<button class=\"ds-btn-danger\" type=\"button\">删除对话</button>",
       "css": ".ds-btn-danger{display:inline-flex;align-items:center;justify-content:center;height:44px;padding:0 20px;border:0;border-radius:9999px;background:var(--danger-strong,#c4352c);color:var(--danger-foreground,#fff);font:500 14px/1.4 Geist,ui-sans-serif,system-ui,sans-serif;cursor:pointer;transition:background-color .16s cubic-bezier(.16,1,.3,1)}.ds-btn-danger:hover{background:color-mix(in srgb,var(--danger-strong,#c4352c) 90%,transparent)}.ds-btn-danger:focus-visible{outline:2px solid var(--danger,#ff7066);outline-offset:2px}"
     },
     {
@@ -309,7 +309,7 @@
       "kind": "button",
       "refersTo": "button-ghost",
       "description": "40px 方形图标按钮，用于侧栏的搜索与收起。",
-      "html": "<button class=\"ds-icon\" type=\"button\" aria-label=\"Search conversations\"><svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" aria-hidden=\"true\"><circle cx=\"11\" cy=\"11\" r=\"7\"/><path d=\"M21 21l-4.3-4.3\"/></svg></button>",
+      "html": "<button class=\"ds-icon\" type=\"button\" aria-label=\"搜索对话\"><svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" aria-hidden=\"true\"><circle cx=\"11\" cy=\"11\" r=\"7\"/><path d=\"M21 21l-4.3-4.3\"/></svg></button>",
       "css": ".ds-icon{display:grid;place-items:center;width:40px;height:40px;border:0;border-radius:8px;background:transparent;color:var(--muted-foreground,#a6a6a6);cursor:pointer;transition:background-color .16s cubic-bezier(.16,1,.3,1),color .16s cubic-bezier(.16,1,.3,1)}.ds-icon:hover{background:var(--surface-active,#2c2c2c);color:var(--foreground,#f4f4f4)}.ds-icon:focus-visible{outline:2px solid var(--primary,#1688ff);outline-offset:2px}"
     },
     {
@@ -317,7 +317,7 @@
       "kind": "chip",
       "refersTo": "chip",
       "description": "40px 全圆角 starter，空状态下建议一个可立即开始的请求。",
-      "html": "<button class=\"ds-chip\" type=\"button\"><svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18\"/></svg>Portfolio site</button>",
+      "html": "<button class=\"ds-chip\" type=\"button\"><svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18\"/></svg>整理本周运行</button>",
       "css": ".ds-chip{display:inline-flex;align-items:center;gap:8px;min-height:40px;padding:8px 14px;border:1px solid var(--border,rgb(255 255 255 / .07));border-radius:9999px;background:transparent;color:var(--muted-foreground,#a6a6a6);font:400 13px/1.45 Geist,ui-sans-serif,system-ui,sans-serif;cursor:pointer;transition:background-color .16s cubic-bezier(.16,1,.3,1),border-color .16s cubic-bezier(.16,1,.3,1),color .16s cubic-bezier(.16,1,.3,1)}.ds-chip svg{color:var(--muted-foreground,#a6a6a6);transition:color .16s cubic-bezier(.16,1,.3,1)}.ds-chip:hover{border-color:var(--border-strong,rgb(255 255 255 / .12));background:var(--surface-raised,#242424);color:var(--foreground,#f4f4f4)}.ds-chip:hover svg{color:var(--primary,#1688ff)}.ds-chip:focus-visible{outline:2px solid var(--primary,#1688ff);outline-offset:2px}"
     },
     {
@@ -325,7 +325,7 @@
       "kind": "input",
       "refersTo": "input",
       "description": "44px、12px 圆角的原生输入框；focus 只换边框，不加蓝色 glow。",
-      "html": "<input class=\"ds-input\" type=\"text\" placeholder=\"Ask, plan, or build something…\" aria-label=\"Message\" />",
+      "html": "<input class=\"ds-input\" type=\"text\" placeholder=\"问点什么，或者直接开始构建…\" aria-label=\"消息\" />",
       "css": ".ds-input{box-sizing:border-box;width:100%;height:44px;padding:0 12px;border:1px solid var(--border,rgb(255 255 255 / .07));border-radius:12px;background:var(--background,#1a1a1a);color:var(--foreground,#f4f4f4);font:400 14px/1.5 Geist,ui-sans-serif,system-ui,sans-serif;outline:none;transition:border-color .16s cubic-bezier(.16,1,.3,1)}.ds-input::placeholder{color:var(--muted-foreground,#a6a6a6)}.ds-input:focus{border-color:var(--muted-foreground,#a6a6a6)}.ds-input:disabled{cursor:not-allowed;opacity:.5}"
     },
     {
@@ -333,7 +333,7 @@
       "kind": "nav",
       "refersTo": "nav-item",
       "description": "36px 侧栏行；当前行用 surface-active 实底而不是色条。",
-      "html": "<div class=\"ds-nav-group\"><button class=\"ds-nav\" type=\"button\"><svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M12 5v14M5 12h14\"/></svg>New Chat<span class=\"ds-kbd\">⌘N</span></button><button class=\"ds-nav is-active\" type=\"button\" aria-current=\"page\"><svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M4 19.5A2.5 2.5 0 0 1 6.5 17H20\"/><path d=\"M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z\"/></svg>Knowledge base</button></div>",
+      "html": "<div class=\"ds-nav-group\"><button class=\"ds-nav\" type=\"button\"><svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M12 5v14M5 12h14\"/></svg>新建对话<span class=\"ds-kbd\">⌘N</span></button><button class=\"ds-nav is-active\" type=\"button\" aria-current=\"page\"><svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M4 19.5A2.5 2.5 0 0 1 6.5 17H20\"/><path d=\"M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z\"/></svg>知识库</button></div>",
       "css": ".ds-nav-group{display:flex;flex-direction:column;gap:2px;width:100%}.ds-nav{display:flex;align-items:center;gap:10px;width:100%;height:36px;padding:0 12px;border:0;border-radius:8px;background:transparent;color:var(--muted-foreground,#a6a6a6);font:400 14px/1.5 Geist,ui-sans-serif,system-ui,sans-serif;text-align:left;cursor:pointer;transition:background-color .16s cubic-bezier(.16,1,.3,1),color .16s cubic-bezier(.16,1,.3,1)}.ds-nav:hover,.ds-nav.is-active{background:var(--surface-active,#2c2c2c);color:var(--foreground,#f4f4f4)}.ds-nav:focus-visible{outline:2px solid var(--primary,#1688ff);outline-offset:2px}.ds-kbd{margin-left:auto;color:var(--faint,#858585);font:400 10px/1.4 'Geist Mono',ui-monospace,monospace}"
     },
     {
@@ -341,7 +341,7 @@
       "kind": "nav",
       "refersTo": "nav-item",
       "description": "3 等分模式切换；激活项用 8px 圆角实底并在项间弹簧移动。",
-      "html": "<div class=\"ds-modes\" role=\"group\" aria-label=\"Workspace modes\"><button class=\"ds-mode is-active\" type=\"button\" aria-pressed=\"true\">Chat</button><button class=\"ds-mode\" type=\"button\" aria-pressed=\"false\">Agent</button><button class=\"ds-mode\" type=\"button\" aria-pressed=\"false\">Design</button></div>",
+      "html": "<div class=\"ds-modes\" role=\"group\" aria-label=\"工作区模式\"><button class=\"ds-mode is-active\" type=\"button\" aria-pressed=\"true\">对话</button><button class=\"ds-mode\" type=\"button\" aria-pressed=\"false\">Agent</button><button class=\"ds-mode\" type=\"button\" aria-pressed=\"false\">设计</button></div>",
       "css": ".ds-modes{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;width:100%}.ds-mode{height:40px;border:0;border-radius:8px;background:transparent;color:var(--muted-foreground,#a6a6a6);font:500 12px/1.4 Geist,ui-sans-serif,system-ui,sans-serif;cursor:pointer;transition:background-color .16s cubic-bezier(.16,1,.3,1),color .16s cubic-bezier(.16,1,.3,1)}.ds-mode:hover{color:var(--foreground,#f4f4f4)}.ds-mode.is-active{background:var(--surface-active,#2c2c2c);color:var(--foreground,#f4f4f4)}.ds-mode:focus-visible{outline:2px solid var(--primary,#1688ff);outline-offset:2px}"
     },
     {
@@ -349,7 +349,7 @@
       "kind": "custom",
       "refersTo": "composer",
       "description": "签名组件：3px muted 外圈形成凹槽，内层实底输入区，底部工具栏收束 attach、搜索、模型与发送。",
-      "html": "<div class=\"ds-composer\"><div class=\"ds-credits\">490 Credits Remaining</div><div class=\"ds-composer-body\"><p class=\"ds-placeholder\">Ask, plan, or build something…</p><div class=\"ds-toolbar\"><span class=\"ds-tool\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.9\" stroke-linecap=\"round\" aria-hidden=\"true\"><path d=\"M12 5v14M5 12h14\"/></svg></span><span class=\"ds-tool\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18\"/></svg></span><span class=\"ds-model\">Sonnet 5 <svg viewBox=\"0 0 24 24\" width=\"14\" height=\"14\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"m6 9 6 6 6-6\"/></svg></span><button class=\"ds-composer-send\" type=\"button\" aria-label=\"Send message\"><svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.4\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M12 19V5M5 12l7-7 7 7\"/></svg></button></div></div></div>",
+      "html": "<div class=\"ds-composer\"><div class=\"ds-credits\">剩余 490 额度</div><div class=\"ds-composer-body\"><p class=\"ds-placeholder\">问点什么，或者直接开始构建…</p><div class=\"ds-toolbar\"><span class=\"ds-tool\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.9\" stroke-linecap=\"round\" aria-hidden=\"true\"><path d=\"M12 5v14M5 12h14\"/></svg></span><span class=\"ds-tool\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18\"/></svg></span><span class=\"ds-model\">Sonnet 5 <svg viewBox=\"0 0 24 24\" width=\"14\" height=\"14\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"m6 9 6 6 6-6\"/></svg></span><button class=\"ds-composer-send\" type=\"button\" aria-label=\"发送消息\"><svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.4\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M12 19V5M5 12l7-7 7 7\"/></svg></button></div></div></div>",
       "css": ".ds-composer{width:100%;box-sizing:border-box;padding:3px;border-radius:20px;background:var(--muted,#2c2c2c);font-family:Geist,ui-sans-serif,system-ui,sans-serif}.ds-credits{padding:8px 12px 4px;color:var(--muted-foreground,#a6a6a6);font-size:13px;line-height:1.45}.ds-composer-body{box-sizing:border-box;padding:8px;border-radius:17.6px;background:var(--background,#1a1a1a)}.ds-placeholder{margin:0;padding:8px 10px 26px;color:var(--muted-foreground,#a6a6a6);font-size:16px;line-height:1.5}.ds-toolbar{display:flex;align-items:center;gap:6px;color:var(--muted-foreground,#a6a6a6)}.ds-tool{display:grid;place-items:center;width:36px;height:36px;border-radius:9999px;font-size:18px;line-height:1}.ds-model{display:inline-flex;align-items:center;gap:6px;color:var(--foreground,#f4f4f4);font-size:13px;line-height:1.4}.ds-composer-send{display:grid;place-items:center;width:36px;height:36px;margin-left:auto;border:0;border-radius:9999px;background:var(--primary,#1688ff);color:var(--primary-foreground,#fff);cursor:pointer;transition:opacity .16s cubic-bezier(.16,1,.3,1)}.ds-composer-send:hover{opacity:.85}.ds-composer-send:focus-visible{outline:2px solid var(--ring,#1688ff);outline-offset:2px}"
     },
     {
@@ -357,19 +357,20 @@
       "kind": "custom",
       "refersTo": "floating-menu",
       "description": "12px 圆角、surface-raised 实底、1px 强边框加投影；只用于覆盖内容的菜单。",
-      "html": "<div class=\"ds-menu\" role=\"menu\" aria-label=\"Account\"><div class=\"ds-menu-label\">My account</div><button class=\"ds-menu-item\" type=\"button\" role=\"menuitem\">Profile</button><button class=\"ds-menu-item is-active\" type=\"button\" role=\"menuitem\">Settings</button><div class=\"ds-menu-sep\"></div><button class=\"ds-menu-item\" type=\"button\" role=\"menuitem\">Help &amp; support</button></div>",
+      "html": "<div class=\"ds-menu\" role=\"menu\" aria-label=\"账户\"><div class=\"ds-menu-label\">我的账户</div><button class=\"ds-menu-item\" type=\"button\" role=\"menuitem\">个人资料</button><button class=\"ds-menu-item is-active\" type=\"button\" role=\"menuitem\">设置</button><div class=\"ds-menu-sep\"></div><button class=\"ds-menu-item\" type=\"button\" role=\"menuitem\">帮助与支持</button></div>",
       "css": ".ds-menu{box-sizing:border-box;width:224px;padding:6px;border:1px solid var(--border-strong,rgb(255 255 255 / .12));border-radius:12px;background:var(--surface-raised,#242424);box-shadow:0 16px 48px -28px rgb(0 0 0 / .55);font-family:Geist,ui-sans-serif,system-ui,sans-serif}.ds-menu-label{padding:6px 8px;color:var(--muted-foreground,#a6a6a6);font-size:12px;line-height:1.4}.ds-menu-item{display:flex;align-items:center;width:100%;height:32px;padding:0 8px;border:0;border-radius:8px;background:transparent;color:var(--foreground,#f4f4f4);font-size:14px;line-height:1.4;text-align:left;cursor:pointer}.ds-menu-item:hover,.ds-menu-item.is-active{background:var(--surface-active,#2c2c2c)}.ds-menu-item:focus-visible{outline:2px solid var(--primary,#1688ff);outline-offset:-2px}.ds-menu-sep{height:1px;margin:4px -2px;background:var(--border,rgb(255 255 255 / .07))}"
     }
   ],
   "narrative": {
     "northStar": "The Quiet Instrument",
-    "overview": "Cognacta 是企业级 agent 运行底座：agent 在服务端运行，人在这里下达意图、观察执行、接管异常。界面不是展示 AI 的橱窗，而是一台安静的仪器——大部分时间它是暗的、稳的、可读的；只有当机器需要人做决定或正在回应时，才亮起一处电光蓝。\n\n这个系统建立在石墨近黑而不是纯黑上。长时间值守时，纯黑会让 1px 细线消失，石墨保留层级；深度用色调台阶与发丝边框表达，投影只属于真正浮在内容之上的层。排版只有 Geist 一个家族，负字距只出现在 display，正文保持中性。动效分两档：结构变化用弹簧，状态反馈用 160–220ms 的快速缓出。",
+    "overview": "Cognacta 是企业级 agent 运行底座：agent 在服务端运行，人在这里下达意图、观察执行、接管异常。界面不是展示 AI 的橱窗，而是一台安静的仪器——大部分时间它是暗的、稳的、可读的；只有当机器需要人做决定或正在回应时，才亮起一处电光蓝。\n\n这个系统建立在石墨近黑而不是纯黑上。长时间值守时，纯黑会让 1px 细线消失，石墨保留层级；深度用色调台阶与发丝边框表达，投影只属于真正浮在内容之上的层。排版只有 Geist 一个家族，负字距只出现在 display，正文保持中性。动效分两档：结构变化用弹簧，状态反馈用 160–220ms 的快速缓出。\n\n界面默认简体中文，英文是完整镜像；两套语言共享同一套令牌、栅格与组件。",
     "keyCharacteristics": [
       "石墨近黑底，电光蓝是唯一彩度，且单屏不超过 10%",
       "1px 发丝线与三级色调台阶分层；静态表面没有投影",
       "Geist 单一家族；display 收字距，正文不收",
       "248px 固定侧栏 + 单列工作区（44rem / 48rem）",
-      "弹簧只给结构变化，状态反馈 160–220ms；全量 reduced-motion 降级"
+      "弹簧只给结构变化，状态反馈 160–220ms；全量 reduced-motion 降级",
+      "默认简体中文，英文完整镜像；中文行高不低于 1.5"
     ],
     "rules": [
       {
@@ -408,6 +409,11 @@
         "section": "typography"
       },
       {
+        "name": "The Chinese-First Rule",
+        "body": "简体中文是默认界面语言，英文是同一组消息键的完整镜像。中文正文行高不低于 1.5；不靠加宽字距制造标题层级，布局按中文字符宽度验证。",
+        "section": "typography"
+      },
+      {
         "name": "The Rail Rule",
         "body": "侧栏固定 248px，不随视口变宽；信息密度靠行高与分组建立，不靠拉伸。",
         "section": "layout"
@@ -440,7 +446,8 @@
       "Do 用 248px 侧栏 + 单列工作区；把复杂度收进浮层和抽屉。",
       "Do 结构变化用弹簧，状态反馈用 160–220ms 缓出；两者不要互换。",
       "Do 保持 Geist 单一家族，display 最深只收到 -0.04em。",
-      "Do 在承载白字的实底按钮上使用 primary-strong / danger-strong，保证 ≥4.5:1。"
+      "Do 在承载白字的实底按钮上使用 primary-strong / danger-strong，保证 ≥4.5:1。",
+      "Do 中英文各跑一遍主要断点，中文文案不溢出、不挤压控件。"
     ],
     "donts": [
       "Don't 引入第二个品牌色、第二套展示字体或衬线字体。",

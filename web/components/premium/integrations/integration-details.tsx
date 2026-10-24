@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/motion/button/base";
 import { X } from "@/components/icons";
 import {
@@ -23,6 +24,7 @@ export function IntegrationDetails({
   onOpenChange: (open: boolean) => void;
   onConfirm: () => void;
 }) {
+  const t = useTranslations("Integrations");
   return (
     <AnimatedModal
       open={open}
@@ -33,7 +35,7 @@ export function IntegrationDetails({
       <Button
         type="button"
         variant="ghost"
-        aria-label="Close app details"
+        aria-label={t("closeDetails")}
         onClick={() => onOpenChange(false)}
         className="absolute top-3 right-3 grid size-10 place-items-center rounded-full text-muted-foreground hover:bg-surface-active focus-visible:outline-2 focus-visible:outline-primary"
       >
@@ -44,24 +46,22 @@ export function IntegrationDetails({
         className="size-12 rounded-xl bg-background"
       />
       <p className="mt-5 text-xs text-muted-foreground">
-        {integration.category}
+        {t(`categories.${integration.category}`)}
       </p>
       <AnimatedModalTitle className="mt-1 text-xl font-semibold">
         {connected
-          ? `Manage ${integration.name}`
-          : `Connect ${integration.name}`}
+          ? t("manage", { name: integration.name })
+          : t("connect", { name: integration.name })}
       </AnimatedModalTitle>
       <AnimatedModalDescription className="mt-2 text-sm leading-6 text-muted-foreground">
-        {integration.description}
+        {t(`items.${integration.id}`)}
       </AnimatedModalDescription>
       <div className="mt-5 rounded-xl border border-border p-4 text-sm">
         <p className="font-medium">
-          {connected ? "Connected in this demo" : "Try the connection flow"}
+          {connected ? t("detailConnectedTitle") : t("detailTryTitle")}
         </p>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">
-          {connected
-            ? "Disconnecting removes this app from your local connected list."
-            : "This preview only updates your local app list. A production integration would request authorization from your provider."}
+          {connected ? t("detailConnectedHint") : t("detailTryHint")}
         </p>
       </div>
       <div className="mt-6 flex justify-end gap-2">
@@ -71,14 +71,14 @@ export function IntegrationDetails({
           onClick={() => onOpenChange(false)}
           className="min-h-10 rounded-full px-4 text-sm hover:bg-surface-active focus-visible:outline-2 focus-visible:outline-primary"
         >
-          Cancel
+          {t("cancel")}
         </Button>
         <Button
           type="button"
           onClick={onConfirm}
           className="min-h-10 rounded-full bg-primary-strong px-4 text-sm font-medium text-primary-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         >
-          {connected ? "Disconnect" : "Connect demo"}
+          {connected ? t("disconnect") : t("connectDemo")}
         </Button>
       </div>
     </AnimatedModal>

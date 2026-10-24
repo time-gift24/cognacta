@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { Input, Textarea } from "@/components/form-fields";
 import { useKnowledge } from "./knowledge-provider";
 import { DeleteConfirmationModal } from "@/components/delete-confirmation-modal";
@@ -37,8 +38,11 @@ const focus =
 
 export function KnowledgeBase() {
   const { entries, ready, loadError, save } = useKnowledge();
+  const t = useTranslations("Knowledge");
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState("All sources");
+  const [filter, setFilter] = useState<"all" | "notes" | "links">("all");
+  const filterLabel = (value: "all" | "notes" | "links") =>
+    value === "all" ? t("allSources") : value === "notes" ? t("notes") : t("links");
   const [draft, setDraft] = useState(EMPTY);
   const [open, setOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -52,7 +56,7 @@ export function KnowledgeBase() {
       setConfirmDelete(false);
       setNotice(message);
     } catch {
-      setError("Could not save. Browser storage may be full or unavailable.");
+      setError(t("errorSave"));
     }
   }
 
@@ -65,8 +69,8 @@ export function KnowledgeBase() {
 
   const visible = entries.filter(
     (entry) =>
-      (filter === "All sources" ||
-        (filter === "Links" ? !!entry.url : !entry.url)) &&
+      (filter === "all" ||
+        (filter === "links" ? !!entry.url : !entry.url)) &&
       `${entry.title} ${entry.content} ${entry.url}`
         .toLowerCase()
         .includes(query.trim().toLowerCase()),
@@ -77,13 +81,13 @@ export function KnowledgeBase() {
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="mb-2 text-xs text-muted-foreground">
-            Workspace / Knowledge base
+            {t("breadcrumb")}
           </p>
           <h1 className="text-2xl font-semibold tracking-tight">
-            Knowledge base
+            {t("title")}
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            A home for your notes, context, and references.
+            {t("subtitle")}
           </p>
         </div>
         <Button
@@ -92,19 +96,19 @@ export function KnowledgeBase() {
           className={`h-11 ${focus}`}
         >
           <Plus className="size-4" />
-          Add source
+          {t("add")}
         </Button>
       </header>
 
       <div className="mt-8 flex items-center gap-2">
         <label className="relative min-w-0 flex-1 sm:max-w-xs">
-          <span className="sr-only">Search knowledge</span>
+          <span className="sr-only">{t("search")}</span>
           <Search className="absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search knowledge"
+            placeholder={t("search")}
             className="h-10 rounded-full pl-10"
           />
         </label>
@@ -112,21 +116,24 @@ export function KnowledgeBase() {
           <AnimatedDropdownTrigger asChild>
             <button
               type="button"
-              aria-label={`Source type: ${filter}`}
+              aria-label={t("sourceType", { type: filterLabel(filter) })}
               className={`inline-flex h-10 shrink-0 items-center gap-2 rounded-full border border-border px-3 text-xs hover:bg-surface-raised ${focus}`}
             >
-              {filter}
+              {filterLabel(filter)}
               <ChevronDown className="size-3.5" />
             </button>
           </AnimatedDropdownTrigger>
           <AnimatedDropdownContent align="end" className="w-40 min-w-0">
             <AnimatedDropdownRadioGroup
               value={filter}
-              onValueChange={setFilter}
+              onValueChange={(value) => {
+                if (value === "all" || value === "notes" || value === "links")
+                  setFilter(value);
+              }}
             >
-              {["All sources", "Notes", "Links"].map((value) => (
+              {(["all", "notes", "links"] as const).map((value) => (
                 <AnimatedDropdownRadioItem key={value} value={value}>
-                  {value}
+                  {filterLabel(value)}
                 </AnimatedDropdownRadioItem>
               ))}
             </AnimatedDropdownRadioGroup>
@@ -157,7 +164,7 @@ export function KnowledgeBase() {
                 </span>
               </span>
               <span className="hidden rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground sm:inline-flex">
-                {entry.url ? "Link" : "Note"}
+                {entry.url ? t("link") : t("note")}
               </span>
               <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
             </button>
@@ -167,14 +174,10 @@ export function KnowledgeBase() {
           <div className="px-4 py-12 text-center">
             <BookOpen className="mx-auto size-6 text-muted-foreground" />
             <p className="mt-3 text-sm">
-              {entries.length
-                ? "No matching sources"
-                : "Your knowledge base starts here"}
+              {entries.length ? t("noMatchTitle") : t("emptyTitle")}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              {entries.length
-                ? "Try another search or source type."
-                : "Add a note or reference link to keep it close."}
+              {entries.length ? t("noMatchHint") : t("emptyHint")}
             </p>
             <Button
               variant="ghost"
@@ -182,11 +185,11 @@ export function KnowledgeBase() {
               onClick={() => {
                 if (entries.length) {
                   setQuery("");
-                  setFilter("All sources");
+                  setFilter("all");
                 } else edit(EMPTY);
               }}
             >
-              {entries.length ? "Clear filters" : "Add source"}
+              {entries.length ? t("clearFilters") : t("add")}
             </Button>
           </div>
         )}
@@ -195,8 +198,7 @@ export function KnowledgeBase() {
         {notice || loadError}
       </p>
       <p className="mt-5 text-xs leading-5 text-muted-foreground">
-        Template preview. Sources are stored in this browser only. Links are not
-        imported, and sources are not sent to the agent.
+        {t("footnote")}
       </p>
 
       <AnimatedModal
@@ -207,17 +209,17 @@ export function KnowledgeBase() {
       >
         <Button
           variant="ghost"
-          aria-label="Close source"
+          aria-label={t("close")}
           onClick={() => setOpen(false)}
           className={`absolute top-3 right-3 size-10 p-0 ${focus}`}
         >
           <X className="size-4" />
         </Button>
         <AnimatedModalTitle className="pr-10 text-xl font-semibold">
-          {draft.id ? "Edit source" : "Add source"}
+          {draft.id ? t("editTitle") : t("addTitle")}
         </AnimatedModalTitle>
         <AnimatedModalDescription className="mt-2 text-sm text-muted-foreground">
-          Keep a note or a link with useful context.
+          {t("modalDescription")}
         </AnimatedModalDescription>
         <form
           className="mt-5 space-y-4"
@@ -230,11 +232,11 @@ export function KnowledgeBase() {
               content: draft.content.trim(),
             };
             if (!cleaned.title || (!cleaned.content && !cleaned.url)) {
-              setError("Add a title and either a note or a reference link.");
+              setError(t("errorTitle"));
               return;
             }
             if (!isReferenceUrl(cleaned.url)) {
-              setError("Use a valid http or https link.");
+              setError(t("errorUrl"));
               return;
             }
             const entry = { ...cleaned, id: draft.id || crypto.randomUUID() };
@@ -242,12 +244,12 @@ export function KnowledgeBase() {
               draft.id
                 ? entries.map((item) => (item.id === draft.id ? entry : item))
                 : [entry, ...entries],
-              "Source saved in this browser.",
+              t("saved"),
             );
           }}
         >
           <label className="block text-sm">
-            Title
+            {t("titleLabel")}
             <Input
               required
               maxLength={120}
@@ -255,13 +257,15 @@ export function KnowledgeBase() {
               onChange={(event) =>
                 setDraft({ ...draft, title: event.target.value })
               }
-              placeholder="e.g. Product guidelines"
+              placeholder={t("titlePlaceholder")}
               className="mt-2"
             />
           </label>
           <label className="block text-sm">
-            Reference link{" "}
-            <span className="text-xs text-muted-foreground">(optional)</span>
+            {t("urlLabel")}{" "}
+            <span className="text-xs text-muted-foreground">
+              {t("optional")}
+            </span>
             <Input
               type="url"
               maxLength={2000}
@@ -274,7 +278,7 @@ export function KnowledgeBase() {
             />
           </label>
           <div className="text-sm">
-            <label htmlFor="knowledge-source-notes">Notes</label>
+            <label htmlFor="knowledge-source-notes">{t("notesLabel")}</label>
             <Textarea
               id="knowledge-source-notes"
               rows={5}
@@ -283,7 +287,7 @@ export function KnowledgeBase() {
               onChange={(event) =>
                 setDraft({ ...draft, content: event.target.value })
               }
-              placeholder="Add the details you want to keep handy…"
+              placeholder={t("notesPlaceholder")}
               className="mt-2"
             />
           </div>
@@ -292,7 +296,7 @@ export function KnowledgeBase() {
               {draft.id && (
                 <Button
                   variant="ghost"
-                  aria-label="Delete source"
+                  aria-label={t("delete")}
                   onClick={() => {
                     setError("");
                     setConfirmDelete(true);
@@ -309,16 +313,16 @@ export function KnowledgeBase() {
                   rel="noreferrer noopener"
                   className={`inline-flex h-10 items-center gap-1.5 rounded-full px-3 text-xs text-muted-foreground ${focus}`}
                 >
-                  Visit link
+                  {t("visit")}
                   <ExternalLink className="size-3.5" />
                 </a>
               )}
             </div>
             <div className="flex gap-2">
               <Button variant="ghost" onClick={() => setOpen(false)}>
-                Cancel
+                {t("cancel")}
               </Button>
-              <Button type="submit">Save source</Button>
+              <Button type="submit">{t("save")}</Button>
             </div>
           </div>
         </form>
@@ -337,7 +341,7 @@ export function KnowledgeBase() {
           onConfirm={() =>
             persist(
               entries.filter((entry) => entry.id !== draft.id),
-              "Source deleted from this browser.",
+              t("deleted"),
             )
           }
         />

@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Globe2 } from "@/components/icons";
 import { motion } from "motion/react";
 import { SPRING_PRESS } from "@/lib/ease";
@@ -14,10 +15,11 @@ export function CreditsSearchToggle({
   reduce?: boolean | null;
   onChange: (enabled: boolean) => void;
 }) {
+  const t = useTranslations("Composer");
   return (
     <motion.button
       type="button"
-      aria-label={enabled ? "Disable web search" : "Enable web search"}
+      aria-label={enabled ? t("disableSearch") : t("enableSearch")}
       aria-pressed={enabled}
       onClick={() => onChange(!enabled)}
       whileTap={reduce ? undefined : { scale: 0.96 }}
@@ -39,7 +41,7 @@ export function CreditsSearchToggle({
             : "-translate-x-1 opacity-0 delay-0",
         )}
       >
-        Search
+        {t("searchLabel")}
       </span>
     </motion.button>
   );

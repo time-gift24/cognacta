@@ -5,17 +5,12 @@ export type IntegrationCategory =
   | "Design"
   | "Payments";
 
-export type IntegrationTone = "blue" | "green" | "orange" | "rose" | "slate";
-
 export type IntegrationItem = {
   id: string;
   name: string;
   category: IntegrationCategory;
   description: string;
   logoUrl: string;
-  logoMode?: "adaptive" | "color";
-  tone: IntegrationTone;
-  installed?: boolean;
 };
 
 export const DEFAULT_INTEGRATIONS: IntegrationItem[] = [
@@ -25,19 +20,14 @@ export const DEFAULT_INTEGRATIONS: IntegrationItem[] = [
     category: "Developer",
     description: "Connect repositories, issues, pull requests, and releases.",
     logoUrl:
-      "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/github.svg",
-    tone: "slate",
-    installed: true,
+      "/logos/github.svg",
   },
   {
     id: "linear",
     name: "Linear",
     category: "Developer",
     description: "Keep projects and issues synchronized with active workflows.",
-    logoUrl: "https://cdn.simpleicons.org/linear/5E6AD2",
-    logoMode: "color",
-    tone: "blue",
-    installed: true,
+    logoUrl: "/logos/linear.svg",
   },
   {
     id: "postgres",
@@ -45,9 +35,7 @@ export const DEFAULT_INTEGRATIONS: IntegrationItem[] = [
     category: "Data",
     description: "Query production data through scoped, auditable actions.",
     logoUrl:
-      "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/postgresql/postgresql-original.svg",
-    logoMode: "color",
-    tone: "green",
+      "/logos/postgresql.svg",
   },
   {
     id: "cloudflare",
@@ -55,9 +43,7 @@ export const DEFAULT_INTEGRATIONS: IntegrationItem[] = [
     category: "Developer",
     description: "Deploy Workers and observe activity across the edge.",
     logoUrl:
-      "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/cloudflare/cloudflare-original.svg",
-    logoMode: "color",
-    tone: "orange",
+      "/logos/cloudflare.svg",
   },
   {
     id: "slack",
@@ -65,10 +51,7 @@ export const DEFAULT_INTEGRATIONS: IntegrationItem[] = [
     category: "Communication",
     description: "Send decisions to the right channel and collect approvals.",
     logoUrl:
-      "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/slack/slack-original.svg",
-    logoMode: "color",
-    tone: "rose",
-    installed: true,
+      "/logos/slack.svg",
   },
   {
     id: "figma",
@@ -76,17 +59,13 @@ export const DEFAULT_INTEGRATIONS: IntegrationItem[] = [
     category: "Design",
     description: "Read files, comments, variables, and component metadata.",
     logoUrl:
-      "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/figma/figma-original.svg",
-    logoMode: "color",
-    tone: "rose",
+      "/logos/figma.svg",
   },
   {
     id: "stripe",
     name: "Stripe",
     category: "Payments",
     description: "Respond to subscription, invoice, and payment events.",
-    logoUrl: "https://cdn.simpleicons.org/stripe/635BFF",
-    logoMode: "color",
-    tone: "blue",
+    logoUrl: "/logos/stripe.svg",
   },
 ];

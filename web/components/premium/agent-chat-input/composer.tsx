@@ -1,6 +1,7 @@
 "use client";
 
 import type { KeyboardEvent } from "react";
+import { useTranslations } from "next-intl";
 import {
   forwardRef,
   useCallback,
@@ -292,6 +293,7 @@ export const AgentChatComposer = forwardRef<
   },
   ref,
 ) {
+  const t = useTranslations("Composer");
   const editorRef = useRef<HTMLDivElement>(null);
   const skillsRef = useRef(skills);
   skillsRef.current = skills;
@@ -379,7 +381,7 @@ export const AgentChatComposer = forwardRef<
       ref={editorRef}
       role="textbox"
       aria-multiline="true"
-      aria-label="Agent prompt"
+      aria-label={t("agentPrompt")}
       contentEditable={!disabled}
       suppressContentEditableWarning
       data-placeholder={placeholder}

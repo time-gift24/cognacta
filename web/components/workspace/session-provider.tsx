@@ -4,36 +4,87 @@ import {
   createContext,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
-import {
-  initialSessions,
-  assistantReplies,
-  projects as initialProjects,
-} from "./config";
+import { useTranslations } from "next-intl";
+import { projectSeeds, recentSeeds, replyKeys } from "./config";
 import type { Mode, Session, Project, MessageContext } from "./types";
 
 import { readWorkspace, WORKSPACE_KEY } from "./workspace-storage";
 
 function useSessionStore() {
   const router = useRouter();
-  const [sessions, setSessions] = useState<Session[]>(initialSessions);
-  const [projects, setProjects] = useState<Project[]>(initialProjects);
+  const tDemo = useTranslations("Demo");
+  const seedProjects = useMemo<Project[]>(
+    () =>
+      projectSeeds.map((project) => ({
+        id: project.id,
+        title: tDemo(`projects.${project.key}`),
+      })),
+    [tDemo],
+  );
+  const seedSessions = useMemo<Session[]>(() => {
+    const projectSessions = projectSeeds.map((project) => {
+      const title = tDemo(`projects.${project.key}`);
+      return {
+        id: project.id,
+        title,
+        projectId: project.id,
+        archived: false,
+        messages: [
+          { id: 1, role: "user" as const, content: title },
+          {
+            id: 2,
+            role: "assistant" as const,
+            content: tDemo("assistantIntro"),
+          },
+        ],
+      };
+    });
+    const recentSessions = recentSeeds.map((thread) => {
+      const title = tDemo(`recent.${thread.key}`);
+      return {
+        id: thread.id,
+        title,
+        archived: false,
+        messages: [
+          { id: 1, role: "user" as const, content: title },
+          {
+            id: 2,
+            role: "assistant" as const,
+            content: tDemo("assistantIntro"),
+          },
+        ],
+      };
+    });
+    return [...projectSessions, ...recentSessions];
+  }, [tDemo]);
+  const replies = useMemo(
+    () => replyKeys.map((key) => tDemo(`replies.${key}`)),
+    [tDemo],
+  );
+  const [sessions, setSessions] = useState<Session[]>(seedSessions);
+  const [projects, setProjects] = useState<Project[]>(seedProjects);
   const [ready, setReady] = useState(false);
   const [storageError, setStorageError] = useState(false);
   const [pending, setPending] = useState<string[]>([]);
-  const [mode, setMode] = useState<Mode>("Chat");
+  const [mode, setMode] = useState<Mode>("chat");
   const [model, setModel] = useState("claude-sonnet-5");
   const [webEnabled, setWebEnabled] = useState(false);
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const canPersist = useRef(true);
+  const dirty = useRef(false);
 
   useEffect(() => {
     try {
-      const saved = readWorkspace(localStorage);
+      const saved = readWorkspace(localStorage, {
+        sessions: seedSessions,
+        projects: seedProjects,
+      });
       setProjects(saved.projects);
       setSessions(saved.sessions);
     } catch {
@@ -46,10 +97,12 @@ function useSessionStore() {
     return () => {
       for (const timer of activeTimers.values()) clearTimeout(timer);
     };
+    // The seed is read once; locale changes reload the document.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    if (!ready || !canPersist.current) return;
+    if (!ready || !canPersist.current || !dirty.current) return;
     try {
       localStorage.setItem(
         WORKSPACE_KEY,
@@ -64,6 +117,7 @@ function useSessionStore() {
     id: string,
     patch: Partial<Pick<Session, "title" | "archived">>,
   ) {
+    dirty.current = true;
     setSessions((items) =>
       items.map((item) => (item.id === id ? { ...item, ...patch } : item)),
     );
@@ -82,6 +136,7 @@ function useSessionStore() {
         !projects.some((project) => project.id === projectId))
     )
       return;
+    dirty.current = true;
     setSessions((items) =>
       items.map((session) =>
         session.id === sessionId ? { ...session, projectId } : session,
@@ -95,12 +150,14 @@ function useSessionStore() {
       id: crypto.randomUUID(),
       title: title.trim().slice(0, 80),
     };
+    dirty.current = true;
     setProjects((items) => [...items, project]);
     return project.id;
   }
 
   function renameProject(id: string, title: string) {
     if (!ready || !title.trim()) return;
+    dirty.current = true;
     setProjects((items) =>
       items.map((project) =>
         project.id === id
@@ -112,6 +169,7 @@ function useSessionStore() {
 
   function deleteProject(id: string) {
     if (!ready) return;
+    dirty.current = true;
     // Keep chats and their stable URLs; only remove their project membership.
     setSessions((items) =>
       items.map((session) =>
@@ -125,16 +183,18 @@ function useSessionStore() {
 
   function remove(id: string) {
     stop(id);
+    dirty.current = true;
     setSessions((items) => items.filter((item) => item.id !== id));
   }
 
   function createProjectSession(projectId: string) {
     if (!ready || !projects.some((project) => project.id === projectId)) return;
     const id = crypto.randomUUID();
+    dirty.current = true;
     setSessions((items) => [
       {
         id,
-        title: "New chat",
+        title: tDemo("newChatTitle"),
         projectId,
         messages: [],
         archived: false,
@@ -153,6 +213,7 @@ function useSessionStore() {
     if (!content || !ready || (sessionId && timers.current.has(sessionId)))
       return;
     const id = sessionId ?? crypto.randomUUID();
+    dirty.current = true;
     const message = { id: Date.now(), role: "user" as const, content, context };
     setSessions((items) =>
       sessionId
@@ -192,8 +253,7 @@ function useSessionStore() {
                     {
                       id: message.id + 1,
                       role: "assistant",
-                      content:
-                        assistantReplies[message.id % assistantReplies.length],
+                      content: replies[message.id % replies.length],
                     },
                   ],
                 }

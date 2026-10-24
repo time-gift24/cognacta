@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { BookOpen, Paperclip, Plus } from "@/components/icons";
 import {
   AnimatedDropdown,
@@ -30,13 +31,14 @@ export function ComposerContextMenu({
 }) {
   const { entries, ready } = useKnowledge();
   const router = useRouter();
+  const t = useTranslations("Composer");
   return (
     <AnimatedDropdown modal={false}>
       <AnimatedDropdownTrigger asChild>
         <button
           type="button"
           disabled={disabled}
-          aria-label="Add context"
+          aria-label={t("addContext")}
           className="grid size-9 place-items-center rounded-full hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary"
         >
           <Plus className="size-[18px]" />
@@ -51,14 +53,14 @@ export function ComposerContextMenu({
           <AnimatedDropdownItemIcon>
             <Paperclip />
           </AnimatedDropdownItemIcon>
-          <AnimatedDropdownItemText>Attach files</AnimatedDropdownItemText>
+          <AnimatedDropdownItemText>{t("attachFiles")}</AnimatedDropdownItemText>
         </AnimatedDropdownItem>
         <AnimatedDropdownSub>
           <AnimatedDropdownSubTrigger disabled={!ready}>
             <AnimatedDropdownItemIcon>
               <BookOpen />
             </AnimatedDropdownItemIcon>
-            <AnimatedDropdownItemText>Knowledge base</AnimatedDropdownItemText>
+            <AnimatedDropdownItemText>{t("knowledgeBase")}</AnimatedDropdownItemText>
           </AnimatedDropdownSubTrigger>
           <AnimatedDropdownSubContent className="max-h-64 w-64 min-w-0 overflow-y-auto">
             {entries.map((entry) => (
@@ -75,7 +77,7 @@ export function ComposerContextMenu({
               <AnimatedDropdownItem
                 onSelect={() => router.push("/knowledge-base")}
               >
-                Add your first source
+                {t("addFirstSource")}
               </AnimatedDropdownItem>
             )}
           </AnimatedDropdownSubContent>

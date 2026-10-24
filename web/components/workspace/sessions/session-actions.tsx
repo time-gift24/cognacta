@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { Archive, Edit, MoreHorizontal, Trash } from "@/components/icons";
 import { DeleteConfirmationModal } from "@/components/delete-confirmation-modal";
 import { NameDialog } from "@/components/name-dialog";
@@ -26,6 +27,8 @@ export function SessionActions({
 }) {
   const { update, remove, moveToProject, ready } = useSessions();
   const router = useRouter();
+  const t = useTranslations("Chat");
+  const tDialog = useTranslations("Dialog");
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
 
@@ -43,7 +46,7 @@ export function SessionActions({
           <button
             type="button"
             disabled={!ready}
-            aria-label={`More actions for ${session.title}`}
+            aria-label={t("moreActions", { title: session.title })}
             className="grid size-8 place-items-center rounded-md hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary [@media(pointer:coarse)]:size-10"
           >
             <MoreHorizontal className="size-4" />
@@ -58,7 +61,7 @@ export function SessionActions({
             <AnimatedDropdownItemIcon>
               <Edit />
             </AnimatedDropdownItemIcon>
-            <AnimatedDropdownItemText>Rename</AnimatedDropdownItemText>
+            <AnimatedDropdownItemText>{t("rename")}</AnimatedDropdownItemText>
           </AnimatedDropdownItem>
           <SessionProjectMenu
             projectId={session.projectId}
@@ -71,7 +74,7 @@ export function SessionActions({
               <Archive />
             </AnimatedDropdownItemIcon>
             <AnimatedDropdownItemText>
-              {session.archived ? "Restore" : "Archive"}
+              {session.archived ? t("restore") : t("archive")}
             </AnimatedDropdownItemText>
           </AnimatedDropdownItem>
           <AnimatedDropdownItem
@@ -81,7 +84,7 @@ export function SessionActions({
             <AnimatedDropdownItemIcon>
               <Trash />
             </AnimatedDropdownItemIcon>
-            <AnimatedDropdownItemText>Delete</AnimatedDropdownItemText>
+            <AnimatedDropdownItemText>{t("delete")}</AnimatedDropdownItemText>
           </AnimatedDropdownItem>
         </AnimatedDropdownContent>
       </AnimatedDropdown>
@@ -95,8 +98,8 @@ export function SessionActions({
       <NameDialog
         open={renameOpen}
         onOpenChange={setRenameOpen}
-        title="Rename chat"
-        description="Choose a name you can find easily."
+        title={tDialog("renameChatTitle")}
+        description={tDialog("renameChatDesc")}
         initialValue={session.title}
         onSave={(title) => update(session.id, { title })}
       />

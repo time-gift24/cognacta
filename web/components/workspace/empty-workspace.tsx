@@ -1,8 +1,9 @@
 "use client";
 import { motion, useReducedMotion } from "motion/react";
+import { useTranslations } from "next-intl";
 import { BrandMark } from "../brand-mark";
 import { EASE_OUT } from "@/lib/ease";
-import { starters } from "./config";
+import { starterSeeds } from "./config";
 import { Composer } from "./composer";
 import type { ComposerProps } from "./types";
 export function EmptyWorkspace({
@@ -12,6 +13,13 @@ export function EmptyWorkspace({
   onStarterClick: (prompt: string) => void;
 }) {
   const reduce = useReducedMotion();
+  const t = useTranslations("Home");
+  const tDemo = useTranslations("Demo");
+  const starters = starterSeeds.map((starter) => ({
+    ...starter,
+    title: tDemo(`starters.${starter.key}.title`),
+    prompt: tDemo(`starters.${starter.key}.prompt`),
+  }));
   return (
     <div
       id="workspace"
@@ -27,7 +35,7 @@ export function EmptyWorkspace({
           <BrandMark className="size-4.5" />
         </span>
         <h1 className="mt-4 text-balance font-medium text-[clamp(1.65rem,4vw,2.15rem)] leading-tight tracking-[-0.04em]">
-          What should we move forward?
+          {t("heading")}
         </h1>
       </motion.div>
 
@@ -49,12 +57,12 @@ export function EmptyWorkspace({
             transition: { staggerChildren: 0.06, delayChildren: 0.16 },
           },
         }}
-        aria-label="Project suggestions"
+        aria-label={t("projectSuggestions")}
         className="mt-4 flex flex-wrap justify-center gap-2"
       >
         {starters.map((starter) => (
           <motion.button
-            key={starter.title}
+            key={starter.key}
             type="button"
             onClick={() => onStarterClick(starter.prompt)}
             variants={{

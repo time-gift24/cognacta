@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { ComposerContextMenu } from "./composer-context-menu";
 import { useKnowledge } from "./knowledge-provider";
 import type { AgentChatAttachment } from "../premium/agent-chat-input/types";
@@ -19,6 +20,7 @@ export function Composer({
   compact = false,
 }: ComposerProps & { compact?: boolean }) {
   const { entries } = useKnowledge();
+  const t = useTranslations("Composer");
   const [attachments, setAttachments] = useState<AgentChatAttachment[]>([]);
   return (
     <AgentChatCredits
@@ -45,7 +47,7 @@ export function Composer({
                     {
                       id,
                       name: entry.title,
-                      type: "application/x-pair-knowledge",
+                      type: "application/x-cognacta-knowledge",
                     },
                   ],
             );
@@ -67,7 +69,7 @@ export function Composer({
               }
             : { id: item.id, name: item.name, kind: "file" };
         });
-        onSubmit(text || "Review the attached context.", context);
+        onSubmit(text || t("reviewContext"), context);
         setAttachments([]);
       }}
       onStop={onStop}
@@ -89,7 +91,7 @@ export function Composer({
       ]}
       searchEnabled={webEnabled}
       onSearchEnabledChange={setWebEnabled}
-      placeholder="Ask, plan, or build something…"
+      placeholder={t("placeholder")}
       className="max-w-none"
     />
   );

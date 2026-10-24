@@ -10,6 +10,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { type ReactNode, useCallback, useId, useState } from "react";
 import { AgentDisclosure } from "@/components/agents/agent-disclosure";
 import { EASE_OUT, SPRING_LAYOUT, SPRING_SWAP } from "@/lib/ease";
+import { useTranslations } from "next-intl";
 import { useFavicon } from "@/lib/hooks/use-favicon";
 import { cn } from "@/lib/utils";
 
@@ -60,10 +61,11 @@ export function Citation({
   idPrefix,
   className,
 }: CitationProps) {
+  const t = useTranslations("Chat");
   return (
     <a
       href={`#${citationTargetId(idPrefix, citationId)}`}
-      aria-label={`View citation ${index}`}
+      aria-label={t("viewCitation", { index })}
       className={cn(
         "mx-0.5 inline-flex min-w-4 -translate-y-0.5 items-center justify-center rounded-md bg-muted/60 px-1 py-0.5 text-[10px] font-semibold leading-none text-muted-foreground no-underline outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
         className,
@@ -224,7 +226,7 @@ export function CitationList({
 
 export function Citations({
   citations,
-  title = "Sources",
+  title,
   open,
   defaultOpen = false,
   onOpenChange,
@@ -232,6 +234,8 @@ export function Citations({
   className,
 }: CitationsProps) {
   const reduce = useReducedMotion() ?? false;
+  const t = useTranslations("Chat");
+  const resolvedTitle = title ?? t("sourcesTitle");
   const baseId = useId();
   const contentId = `${baseId}-content`;
   const resolvedPrefix = idPrefix ?? `citation-${baseId.replace(/:/g, "")}`;
@@ -255,7 +259,7 @@ export function Citations({
         className="group -ml-1 flex min-h-8 items-center gap-2 rounded-lg px-1 text-left text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
       >
         <BookOpenText className="size-4" />
-        <span className="font-medium">{title}</span>
+        <span className="font-medium">{resolvedTitle}</span>
         <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold tabular-nums">
           {citations.length}
         </span>

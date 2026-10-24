@@ -8,6 +8,7 @@ import {
   ThumbsDown,
   ThumbsUp,
 } from "@/components/icons";
+import { useTranslations } from "next-intl";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
   type ReactNode,
@@ -59,11 +60,13 @@ export interface StreamingResponseProps {
 function ResponseAction({
   label,
   active = false,
+  pressed,
   onClick,
   children,
 }: {
   label: string;
   active?: boolean;
+  pressed?: boolean;
   onClick: () => void;
   children: ReactNode;
 }) {
@@ -74,9 +77,7 @@ function ResponseAction({
       type="button"
       aria-label={label}
       title={label}
-      aria-pressed={
-        label === "Helpful" || label === "Not helpful" ? active : undefined
-      }
+      aria-pressed={pressed}
       onClick={onClick}
       whileTap={reduce ? undefined : { scale: 0.9 }}
       transition={SPRING_PRESS}
@@ -111,6 +112,7 @@ export function StreamingResponse({
   actionsClassName,
 }: StreamingResponseProps) {
   const reduce = useReducedMotion() ?? false;
+  const t = useTranslations("Chat");
   const baseId = useId();
   const [copied, setCopied] = useState(false);
   const [internalFeedback, setInternalFeedback] =
@@ -188,7 +190,7 @@ export function StreamingResponse({
             <div className={cn("flex items-center gap-0.5", actionsClassName)}>
               {canCopy ? (
                 <ResponseAction
-                  label={copied ? "Copied" : "Copy response"}
+                  label={copied ? t("copied") : t("copyResponse")}
                   onClick={handleCopy}
                 >
                   {copied ? (
@@ -199,22 +201,24 @@ export function StreamingResponse({
                 </ResponseAction>
               ) : null}
               {onRetry ? (
-                <ResponseAction label="Retry response" onClick={onRetry}>
+                <ResponseAction label={t("retryResponse")} onClick={onRetry}>
                   <RotateCcw className="size-3.5" />
                 </ResponseAction>
               ) : null}
               {complete ? (
                 <>
                   <ResponseAction
-                    label="Helpful"
+                    label={t("helpful")}
                     active={currentFeedback === "up"}
+                    pressed={currentFeedback === "up"}
                     onClick={() => setFeedback("up")}
                   >
                     <ThumbsUp className="size-3.5" />
                   </ResponseAction>
                   <ResponseAction
-                    label="Not helpful"
+                    label={t("notHelpful")}
                     active={currentFeedback === "down"}
+                    pressed={currentFeedback === "down"}
                     onClick={() => setFeedback("down")}
                   >
                     <ThumbsDown className="size-3.5" />
@@ -231,8 +235,7 @@ export function StreamingResponse({
                 >
                   <CitationStack citations={sources} />
                   <span className="tabular-nums">
-                    {sources.length}{" "}
-                    {sources.length === 1 ? "source" : "sources"}
+                    {t("sourceCount", { count: sources.length })}
                   </span>
                   <motion.span
                     aria-hidden="true"

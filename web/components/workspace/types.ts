@@ -1,4 +1,4 @@
-export type Mode = "Chat" | "Agent" | "Design";
+export type Mode = "chat" | "agent" | "design";
 export type Project = { id: string; title: string };
 export type MessageContext = {
   id: string;

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import { Edit, Folder, Plus, Trash } from "@/components/icons";
 import { Button } from "@/components/motion/button/base";
@@ -20,6 +21,7 @@ export function ProjectsPage() {
     createProjectSession,
   } = useSessions();
   const router = useRouter();
+  const t = useTranslations("Projects");
   const [editing, setEditing] = useState<Project | null>(null);
   const [nameOpen, setNameOpen] = useState(false);
   const [deleting, setDeleting] = useState<Project | null>(null);
@@ -28,9 +30,9 @@ export function ProjectsPage() {
     <div className="mx-auto w-full max-w-4xl px-5 pt-20 pb-10 sm:px-8 lg:pt-12">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Projects</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Keep related conversations together.
+            {t("subtitle")}
           </p>
         </div>
         <Button
@@ -41,7 +43,7 @@ export function ProjectsPage() {
           }}
         >
           <Plus className="size-4" />
-          New project
+          {t("new")}
         </Button>
       </header>
       <div className="mt-8 divide-y divide-border overflow-hidden rounded-2xl border border-border">
@@ -60,7 +62,7 @@ export function ProjectsPage() {
                   {project.title}
                 </h2>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {chatCount} {chatCount === 1 ? "chat" : "chats"}
+                  {t("chatCount", { count: chatCount })}
                 </p>
               </div>
               <div className="flex w-full items-center justify-end gap-1 sm:w-auto">
@@ -72,12 +74,12 @@ export function ProjectsPage() {
                     if (id) router.push(`/chat/${id}`);
                   }}
                 >
-                  New chat
+                  {t("newChat")}
                 </Button>
                 <Button
                   variant="ghost"
                   className="size-10 p-0"
-                  aria-label={`Rename ${project.title}`}
+                  aria-label={t("rename", { name: project.title })}
                   onClick={() => {
                     setEditing(project);
                     setNameOpen(true);
@@ -88,7 +90,7 @@ export function ProjectsPage() {
                 <Button
                   variant="ghost"
                   className="size-10 p-0 text-danger"
-                  aria-label={`Delete ${project.title}`}
+                  aria-label={t("delete", { name: project.title })}
                   onClick={() => {
                     setDeleting(project);
                     setDeleteOpen(true);
@@ -102,15 +104,15 @@ export function ProjectsPage() {
         })}
         {!projects.length && (
           <p className="p-10 text-center text-sm text-muted-foreground">
-            Create your first project to organize your chats.
+            {t("empty")}
           </p>
         )}
       </div>
       <NameDialog
         open={nameOpen}
         onOpenChange={setNameOpen}
-        title={editing ? "Rename project" : "New project"}
-        description="Give these conversations a shared home."
+        title={editing ? t("renameTitle") : t("newTitle")}
+        description={t("nameDescription")}
         initialValue={editing?.title ?? ""}
         onSave={(title) =>
           editing ? renameProject(editing.id, title) : createProject(title)
@@ -121,7 +123,7 @@ export function ProjectsPage() {
         onOpenChange={setDeleteOpen}
         itemName={deleting?.title ?? ""}
         itemType="project"
-        description={`Delete “${deleting?.title ?? ""}”? Its chats will be kept and moved out of the project. Archived chats stay archived.`}
+        description={t("deleteDescription", { name: deleting?.title ?? "" })}
         onConfirm={() => {
           if (deleting) deleteProject(deleting.id);
           setDeleteOpen(false);

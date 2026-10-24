@@ -37,10 +37,6 @@
   --danger-strong: #c4352c;
 }
 
-:root[data-theme="light"] .integration-adaptive-mark {
-  filter: brightness(0);
-}
-
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

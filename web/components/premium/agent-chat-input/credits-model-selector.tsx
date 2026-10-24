@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Check, ChevronDown } from "@/components/icons";
 import { motion } from "motion/react";
 import { useState } from "react";
@@ -26,6 +27,7 @@ export function CreditsModelSelector({
   reduce?: boolean | null;
   onModelChange: (model: string) => void;
 }) {
+  const t = useTranslations("Composer");
   const [open, setOpen] = useState(false);
   const selected =
     models.find((model) => model.id === selectedModel) ?? models[0];
@@ -40,7 +42,7 @@ export function CreditsModelSelector({
         <motion.button
           type="button"
           disabled={disabled}
-          aria-label={`Select model. Current model: ${selected.label}`}
+          aria-label={t("selectModel", { model: selected.label })}
           whileTap={reduce ? undefined : { scale: 0.96 }}
           transition={SPRING_PRESS}
           className="flex h-8 min-w-0 max-w-32 items-center gap-1 rounded-full px-1.5 text-[13px] font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
@@ -65,7 +67,7 @@ export function CreditsModelSelector({
       >
         <div className="max-h-80 overflow-y-auto overscroll-contain">
         {groups.map((group) => (
-          <div key={group ?? "models"} role="group" aria-label={group ?? "Models"} className="not-first:mt-1">
+          <div key={group ?? "models"} role="group" aria-label={group ?? t("models")} className="not-first:mt-1">
             {group && <div className="px-2 pb-1 pt-2 text-xs font-medium text-muted-foreground">{group}</div>}
         {models.filter((model) => model.group === group).map((model) => {
           const active = model.id === selected.id;

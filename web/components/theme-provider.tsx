@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import {
   createContext,
   useContext,
@@ -9,7 +10,7 @@ import {
 } from "react";
 
 export type Theme = "dark" | "light" | "system";
-const KEY = "pair.theme.v1";
+const KEY = "cognacta.theme.v1";
 const ThemeContext = createContext<{
   theme: Theme;
   ready: boolean;
@@ -18,6 +19,7 @@ const ThemeContext = createContext<{
 } | null>(null);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
+  const t = useTranslations("Settings");
   const [theme, updateTheme] = useState<Theme>("dark");
   const [ready, setReady] = useState(false);
   const [error, setError] = useState("");
@@ -51,7 +53,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     try {
       localStorage.setItem(KEY, value);
     } catch {
-      setError("Theme changed, but could not be saved in this browser.");
+      setError(t("themeSaveError"));
     }
   }
 

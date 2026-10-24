@@ -1,5 +1,6 @@
 import { Folder } from "@/components/icons";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import {
   AnimatedDropdownItemIcon,
   AnimatedDropdownItem,
@@ -21,6 +22,7 @@ export function SessionProjectMenu({
 }) {
   const { projects } = useSessions();
   const router = useRouter();
+  const t = useTranslations("Projects");
   return (
     <AnimatedDropdownSub>
       <AnimatedDropdownSubTrigger>
@@ -28,13 +30,13 @@ export function SessionProjectMenu({
           <Folder />
         </AnimatedDropdownItemIcon>
         <AnimatedDropdownItemText>
-          {projectId ? "Move to project" : "Add to project"}
+          {projectId ? t("moveTo") : t("addTo")}
         </AnimatedDropdownItemText>
       </AnimatedDropdownSubTrigger>
       <AnimatedDropdownSubContent className="w-52 min-w-0">
         {!projects.length && (
           <AnimatedDropdownItem onSelect={() => router.push("/projects")}>
-            Create a project
+            {t("createFirst")}
           </AnimatedDropdownItem>
         )}
         <AnimatedDropdownRadioGroup
@@ -48,7 +50,7 @@ export function SessionProjectMenu({
           ))}
           {projectId && (
             <AnimatedDropdownRadioItem value="">
-              Remove from project
+              {t("removeFrom")}
             </AnimatedDropdownRadioItem>
           )}
         </AnimatedDropdownRadioGroup>

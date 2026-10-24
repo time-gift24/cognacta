@@ -3,12 +3,14 @@
 import Link from "next/link";
 import { Input } from "@/components/form-fields";
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { Archive, Search } from "@/components/icons";
 import { useSessions } from "../session-provider";
 import { SessionActions } from "./session-actions";
 
 export function ArchivedChats() {
   const { sessions, ready } = useSessions();
+  const t = useTranslations("Archived");
   const [query, setQuery] = useState("");
   const archived = sessions.filter(
     (session) =>
@@ -17,18 +19,18 @@ export function ArchivedChats() {
   );
   return (
     <div className="mx-auto w-full max-w-4xl px-5 pt-20 pb-10 sm:px-8 lg:pt-12">
-      <h1 className="text-2xl font-semibold tracking-tight">Archived chats</h1>
+      <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
       <p className="mt-2 text-sm text-muted-foreground">
-        Out of the sidebar, here when you need them.
+        {t("subtitle")}
       </p>
       <label className="relative mt-8 block max-w-sm">
-        <span className="sr-only">Search archived chats</span>
+        <span className="sr-only">{t("search")}</span>
         <Search className="absolute top-3 left-3.5 size-4 text-muted-foreground" />
         <Input
           type="search"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search archived chats"
+          placeholder={t("search")}
           className="h-10 rounded-full pl-10"
         />
       </label>
@@ -48,10 +50,10 @@ export function ArchivedChats() {
         {!archived.length && (
           <p className="p-10 text-center text-sm text-muted-foreground">
             {!ready
-              ? "Loading chats…"
+              ? t("loading")
               : query
-                ? "No matching archived chats."
-                : "No archived chats yet."}
+                ? t("noMatch")
+                : t("empty")}
           </p>
         )}
       </div>

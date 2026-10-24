@@ -4,16 +4,16 @@ import {
   createContext,
   useContext,
   useEffect,
+  useMemo,
   useState,
   type ReactNode,
 } from "react";
-import {
-  INITIAL_KNOWLEDGE,
-  isKnowledgeEntry,
-  type KnowledgeEntry,
-} from "./knowledge-data";
+import { useTranslations } from "next-intl";
+import { knowledgeSeeds } from "./config";
+import { isKnowledgeEntry, type KnowledgeEntry } from "./knowledge-data";
 
-const KEY = "pair.knowledge.v1";
+const KEY = "cognacta.knowledge.v1";
+
 const KnowledgeContext = createContext<{
   entries: KnowledgeEntry[];
   ready: boolean;
@@ -22,9 +22,22 @@ const KnowledgeContext = createContext<{
 } | null>(null);
 
 export function KnowledgeProvider({ children }: { children: ReactNode }) {
-  const [entries, setEntries] = useState(INITIAL_KNOWLEDGE);
+  const tDemo = useTranslations("Demo");
+  const t = useTranslations("Knowledge");
+  const initialEntries = useMemo<KnowledgeEntry[]>(
+    () =>
+      knowledgeSeeds.map((seed) => ({
+        id: seed.id,
+        title: tDemo(`knowledge.${seed.key}.title`),
+        content: tDemo(`knowledge.${seed.key}.content`),
+        url: seed.url,
+      })),
+    [tDemo],
+  );
+  const [entries, setEntries] = useState<KnowledgeEntry[]>(initialEntries);
   const [ready, setReady] = useState(false);
   const [loadError, setLoadError] = useState("");
+
   useEffect(() => {
     try {
       const stored = localStorage.getItem(KEY);
@@ -35,17 +48,19 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
         setEntries(parsed);
       }
     } catch {
-      setLoadError(
-        "Saved knowledge could not be loaded. Sample sources are shown.",
-      );
+      setLoadError(t("loadError"));
     }
     setReady(true);
+    // Seeds are read once; locale changes reload the document.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
   function save(next: KnowledgeEntry[]) {
     // Only update the UI after storage succeeds, so a failed save keeps the draft.
     localStorage.setItem(KEY, JSON.stringify(next));
     setEntries(next);
   }
+
   return (
     <KnowledgeContext.Provider value={{ entries, ready, loadError, save }}>
       {children}
