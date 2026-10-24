@@ -32,7 +32,7 @@ export function CreditsAttachmentTray({
           transition={reduce ? { duration: 0 } : SPRING_PANEL}
           className="overflow-hidden"
         >
-          <div className="scrollbar-hide flex gap-1.5 overflow-x-auto px-1.5 pt-2 pb-0.5">
+          <div className="scrollbar-none flex gap-1.5 overflow-x-auto px-1.5 pt-2 pb-0.5">
             {attachments.map((attachment) => {
               const image = isImageAttachment(attachment);
               const imageUrl = previewUrls[attachment.id];
