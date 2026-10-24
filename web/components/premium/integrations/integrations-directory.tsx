@@ -18,7 +18,7 @@ import { IntegrationDetails } from "./integration-details";
 
 const STORAGE_KEY = "pair.integrations.v1";
 
-// Adapted from the beUI Integrations Directory block for the Pair workspace.
+// Adapted from the beUI Integrations Directory block for the Cognacta workspace.
 export function IntegrationsDirectory() {
   const reduce = useReducedMotion();
   const tabId = useId();

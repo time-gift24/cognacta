@@ -1,8 +1,8 @@
-# Pair — AI workspace template
+# Cognacta — AI workspace
 
-A responsive conversational workspace for AI products, with light/dark/system
-themes, project management, searchable conversations, archives, a knowledge base,
-integrations previews, and the beUI Credits composer.
+Cognacta's responsive agent workspace, built on the beUI Pair template, with
+light/dark/system themes, project management, searchable conversations, archives,
+a knowledge base, integrations previews, and the beUI Credits composer.
 
 ## Develop
 
@@ -95,6 +95,9 @@ app as a static Pages export: new chat URLs require the Next.js runtime.
 | `pair.integrations.v1` | Simulated connected app IDs |
 | `pair.preferences.v1` | Response style and custom instructions |
 | `pair.theme.v1` | Light, dark, or system preference |
+
+The `pair.*` namespace is kept for storage and migration compatibility; it is
+internal and does not appear in the interface.
 
 On first use, the workspace migrates `pair.sessions.v1` into the v2 record without
 changing session IDs. The old key is retained for recovery. Projects and sessions

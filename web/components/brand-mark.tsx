@@ -7,12 +7,11 @@ export function BrandMark({ className = "size-5" }: { className?: string }) {
       fill="none"
     >
       <path
-        d="M12 2.75v18.5M2.75 12h18.5M5.46 5.46l13.08 13.08M18.54 5.46 5.46 18.54"
+        d="M17.625 7.05a7.875 7.875 0 1 0 0 9.9"
         stroke="currentColor"
-        strokeWidth="1.9"
+        strokeWidth="2.7"
         strokeLinecap="round"
       />
-      <circle cx="12" cy="12" r="2.15" fill="currentColor" />
     </svg>
   );
 }

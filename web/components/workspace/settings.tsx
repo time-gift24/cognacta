@@ -71,7 +71,7 @@ export function WorkspaceSettings() {
         </p>
         <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Make Pair feel like your workspace.
+          Make Cognacta feel like your workspace.
         </p>
       </header>
 
@@ -81,12 +81,12 @@ export function WorkspaceSettings() {
         </h2>
         <div className="flex items-center gap-3 rounded-2xl border border-border p-4">
           <span className="grid size-11 shrink-0 place-items-center rounded-full bg-surface-active text-sm font-medium">
-            SA
+            C
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium">Saurabh</p>
+            <p className="text-sm font-medium">Cognacta</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Personal account
+              Workspace
             </p>
           </div>
           <span className="rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground">
@@ -211,7 +211,7 @@ export function WorkspaceSettings() {
                 id="instructions-help"
                 className="mt-1 text-xs text-muted-foreground"
               >
-                What should Pair know about how you work?
+                What should Cognacta know about how you work?
               </p>
               <Textarea
                 id="instructions"
@@ -273,7 +273,7 @@ export function WorkspaceSettings() {
             <div className="flex-1">
               <p className="text-sm">Connected apps</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Manage the tools you use with Pair.
+                Manage the tools you use with Cognacta.
               </p>
             </div>
             <ChevronRight className="size-4 text-muted-foreground" />

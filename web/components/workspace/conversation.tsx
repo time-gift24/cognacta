@@ -103,7 +103,7 @@ export function Conversation({
                 <MessageContent>
                   <MessageTyping
                     role="status"
-                    label="Pair is thinking"
+                    label="Cognacta is thinking"
                     className="text-muted-foreground"
                   />
                 </MessageContent>

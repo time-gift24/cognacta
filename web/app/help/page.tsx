@@ -5,7 +5,7 @@ export default function HelpPage() {
     <div className="mx-auto w-full max-w-3xl px-5 pt-20 pb-10 sm:px-8 lg:pt-12">
       <h1 className="text-2xl font-semibold tracking-tight">Workspace guide</h1>
       <p className="mt-2 text-sm text-muted-foreground">
-        A quick guide to this local Pair preview.
+        A quick guide to this local Cognacta preview.
       </p>
       <div className="mt-8 space-y-6 text-sm leading-6">
         <section>

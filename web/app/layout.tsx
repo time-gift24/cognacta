@@ -11,9 +11,9 @@ const sans = Geist({ subsets: ["latin"], variable: "--font-geist" });
 const mono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono" });
 
 export const metadata: Metadata = {
-  title: "Pair — AI workspace",
+  title: "Cognacta — Agent workspace",
   description:
-    "A focused conversational workspace for research, planning, and building with AI.",
+    "Cognacta is an enterprise agent workspace for building, running, and observing AI agents.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

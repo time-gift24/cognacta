@@ -56,7 +56,7 @@ export function DeleteConfirmationModal({
         </Button>
         <Button
           onClick={onConfirm}
-          className="h-11 bg-danger text-white hover:bg-danger/90 focus-visible:outline-2 focus-visible:outline-danger"
+          className="h-11 bg-danger-strong text-white hover:bg-danger-strong/90 focus-visible:outline-2 focus-visible:outline-danger"
         >
           Delete {itemType}
         </Button>

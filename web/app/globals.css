@@ -13,8 +13,10 @@
   --border: rgb(255 255 255 / 0.07);
   --border-strong: rgb(255 255 255 / 0.12);
   --primary: #1688ff;
+  --primary-strong: #0b72e0;
   --primary-foreground: #ffffff;
   --danger: #ff7066;
+  --danger-strong: #c4352c;
 }
 
 :root[data-theme="light"] {
@@ -30,7 +32,9 @@
   --border: rgb(0 0 0 / 0.09);
   --border-strong: rgb(0 0 0 / 0.16);
   --primary: #0874e3;
+  --primary-strong: #0874e3;
   --danger: #c4352c;
+  --danger-strong: #c4352c;
 }
 
 :root[data-theme="light"] .integration-adaptive-mark {
@@ -48,12 +52,14 @@
   --color-border: var(--border);
   --color-border-strong: var(--border-strong);
   --color-primary: var(--primary);
+  --color-primary-strong: var(--primary-strong);
   --color-primary-foreground: var(--primary-foreground);
   --color-muted-foreground: var(--muted-foreground);
   --color-popover: var(--surface-raised);
   --color-popover-foreground: var(--foreground);
   --color-ring: var(--primary);
   --color-danger: var(--danger);
+  --color-danger-strong: var(--danger-strong);
   --font-sans: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }

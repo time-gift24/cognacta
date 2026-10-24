@@ -76,7 +76,7 @@ export function IntegrationDetails({
         <Button
           type="button"
           onClick={onConfirm}
-          className="min-h-10 rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          className="min-h-10 rounded-full bg-primary-strong px-4 text-sm font-medium text-primary-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         >
           {connected ? "Disconnect" : "Connect demo"}
         </Button>

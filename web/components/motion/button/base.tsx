@@ -31,7 +31,7 @@ export interface ButtonLinkProps
 }
 
 const VARIANT_CLASS: Record<ButtonVariant, string> = {
-  primary: "bg-primary text-primary-foreground hover:bg-primary/90",
+  primary: "bg-primary-strong text-primary-foreground hover:bg-primary-strong/90",
   secondary: "border border-border bg-card text-foreground hover:border-border",
   ghost: "text-muted-foreground hover:bg-primary/5 hover:text-foreground",
   outline:

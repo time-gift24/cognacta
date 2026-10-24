@@ -53,7 +53,7 @@ export function SidebarContent({
           onClick={onNewChat}
           className="mr-auto rounded-md font-semibold text-xl tracking-tight focus-visible:outline-2 focus-visible:outline-primary"
         >
-          Pair
+          Cognacta
         </button>
         <button
           type="button"

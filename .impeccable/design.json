@@ -1,0 +1,456 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-25T00:53:24+08:00",
+  "title": "Design System: Cognacta Graphite",
+  "extensions": {
+    "colorMeta": {
+      "background": {
+        "role": "neutral",
+        "displayName": "Graphite",
+        "canonical": "#1a1a1a",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#222222",
+          "#3d3d3d",
+          "#5b5b5b",
+          "#7a7a7a",
+          "#9b9b9b",
+          "#c4c4c4",
+          "#eeeeee"
+        ]
+      },
+      "surface-raised": {
+        "role": "neutral",
+        "displayName": "Graphite Raised",
+        "canonical": "#242424",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#222222",
+          "#3d3d3d",
+          "#5b5b5b",
+          "#7a7a7a",
+          "#9b9b9b",
+          "#c4c4c4",
+          "#eeeeee"
+        ]
+      },
+      "surface-active": {
+        "role": "neutral",
+        "displayName": "Graphite Active",
+        "canonical": "#2c2c2c",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#222222",
+          "#3d3d3d",
+          "#5b5b5b",
+          "#7a7a7a",
+          "#9b9b9b",
+          "#c4c4c4",
+          "#eeeeee"
+        ]
+      },
+      "foreground": {
+        "role": "neutral",
+        "displayName": "Bone",
+        "canonical": "#f4f4f4",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#222222",
+          "#3d3d3d",
+          "#5b5b5b",
+          "#7a7a7a",
+          "#9b9b9b",
+          "#c4c4c4",
+          "#eeeeee"
+        ]
+      },
+      "muted-foreground": {
+        "role": "neutral",
+        "displayName": "Ash",
+        "canonical": "#a6a6a6",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#222222",
+          "#3d3d3d",
+          "#5b5b5b",
+          "#7a7a7a",
+          "#9b9b9b",
+          "#c4c4c4",
+          "#eeeeee"
+        ]
+      },
+      "faint": {
+        "role": "neutral",
+        "displayName": "Dust",
+        "canonical": "#858585",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#222222",
+          "#3d3d3d",
+          "#5b5b5b",
+          "#7a7a7a",
+          "#9b9b9b",
+          "#c4c4c4",
+          "#eeeeee"
+        ]
+      },
+      "primary": {
+        "role": "primary",
+        "displayName": "Electric Blue",
+        "canonical": "oklch(0.634 0.200 255)",
+        "tonalRamp": [
+          "#08005d",
+          "#00007d",
+          "#002fa1",
+          "#0053c6",
+          "#0077ec",
+          "#319aff",
+          "#5fc5ff",
+          "#8bf1ff"
+        ]
+      },
+      "primary-strong": {
+        "role": "primary",
+        "displayName": "Electric Blue Deep",
+        "canonical": "oklch(0.564 0.187 256.0)",
+        "tonalRamp": [
+          "#050058",
+          "#000178",
+          "#00319b",
+          "#0054c0",
+          "#1577e6",
+          "#409aff",
+          "#6bc5ff",
+          "#96f1ff"
+        ]
+      },
+      "danger": {
+        "role": "tertiary",
+        "displayName": "Signal Red",
+        "canonical": "oklch(0.717 0.177 26.5)",
+        "tonalRamp": [
+          "#3a0000",
+          "#5c0000",
+          "#820000",
+          "#a8181c",
+          "#ce433d",
+          "#f5675e",
+          "#ff9185",
+          "#ffbcae"
+        ]
+      },
+      "danger-strong": {
+        "role": "tertiary",
+        "displayName": "Signal Red Deep",
+        "canonical": "oklch(0.546 0.181 28.3)",
+        "tonalRamp": [
+          "#3b0000",
+          "#5d0000",
+          "#830000",
+          "#a91412",
+          "#d04136",
+          "#f76657",
+          "#ff907f",
+          "#ffbba8"
+        ]
+      },
+      "light-primary": {
+        "role": "primary",
+        "displayName": "Electric Blue Light",
+        "canonical": "oklch(0.570 0.189 255.7)",
+        "tonalRamp": [
+          "#050059",
+          "#000078",
+          "#00319c",
+          "#0054c1",
+          "#1077e6",
+          "#3e9aff",
+          "#69c5ff",
+          "#94f1ff"
+        ]
+      },
+      "light-danger": {
+        "role": "tertiary",
+        "displayName": "Signal Red Light",
+        "canonical": "oklch(0.546 0.181 28.3)",
+        "tonalRamp": [
+          "#3b0000",
+          "#5d0000",
+          "#830000",
+          "#a91412",
+          "#d04136",
+          "#f76657",
+          "#ff907f",
+          "#ffbba8"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "空状态主问句，仅此一处。"
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "页面标题，如 Settings、Projects。"
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "侧栏字标与区块标题。"
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "对话、设置与说明的默认正文。"
+      },
+      "small": {
+        "displayName": "Small",
+        "purpose": "starter chip 与次级说明。"
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "表单标签与菜单说明。"
+      },
+      "micro": {
+        "displayName": "Micro",
+        "purpose": "侧栏与命令面板的分组标签，不用于标题上方。"
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "快捷键、ID、代码与数值。"
+      }
+    },
+    "shadows": [
+      {
+        "name": "floating",
+        "value": "0 16px 48px -28px rgb(0 0 0 / 0.55)",
+        "purpose": "覆盖内容的菜单与浮层，配合 1px 强边框。"
+      },
+      {
+        "name": "ambient",
+        "value": "0 1px 2px rgb(0 0 0 / 0.05)",
+        "purpose": "仅用于需要轻微离面的预览卡。"
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "hover、颜色、透明度等状态反馈。"
+      },
+      {
+        "name": "ease-drawer",
+        "value": "cubic-bezier(0.32, 0.72, 0, 1)",
+        "purpose": "侧栏与移动抽屉的开合。"
+      },
+      {
+        "name": "spring-swap",
+        "value": "stiffness 460, damping 30, mass 0.55",
+        "purpose": "模式 pill 与布局换位。"
+      },
+      {
+        "name": "spring-panel",
+        "value": "stiffness 420, damping 40, mass 0.5",
+        "purpose": "模态与浮层面板入场。"
+      },
+      {
+        "name": "duration-fast",
+        "value": "160ms",
+        "purpose": "状态反馈的最短时长。"
+      },
+      {
+        "name": "duration-base",
+        "value": "220ms",
+        "purpose": "状态反馈的常用时长。"
+      },
+      {
+        "name": "duration-enter",
+        "value": "550ms",
+        "purpose": "空状态入场与错峰揭示。"
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "lg",
+        "value": "1024px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Send Button",
+      "kind": "button",
+      "refersTo": "button-send",
+      "description": "36px 电光蓝圆形发送键，只在 composer 右侧出现；白色箭头是图形，按 3:1 判定。",
+      "html": "<button class=\"ds-send\" type=\"button\" aria-label=\"Send message\"><svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.4\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M12 19V5M5 12l7-7 7 7\"/></svg></button>",
+      "css": ".ds-send{display:grid;place-items:center;width:36px;height:36px;border:0;border-radius:9999px;background:var(--primary,#1688ff);color:var(--primary-foreground,#fff);cursor:pointer;transition:opacity .16s cubic-bezier(.16,1,.3,1),transform .16s cubic-bezier(.16,1,.3,1)}.ds-send:hover{opacity:.85}.ds-send:active{transform:scale(.97)}.ds-send:focus-visible{outline:2px solid var(--ring,#1688ff);outline-offset:2px}"
+    },
+    {
+      "name": "Primary Text Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "40px 全圆角实底按钮；承载白字时使用 primary-strong，保证 ≥4.5:1。",
+      "html": "<button class=\"ds-btn-primary\" type=\"button\">Save preferences</button>",
+      "css": ".ds-btn-primary{display:inline-flex;align-items:center;justify-content:center;height:40px;padding:0 20px;border:0;border-radius:9999px;background:var(--primary-strong,#0b72e0);color:var(--primary-foreground,#fff);font:500 14px/1.4 Geist,ui-sans-serif,system-ui,sans-serif;cursor:pointer;transition:background-color .16s cubic-bezier(.16,1,.3,1)}.ds-btn-primary:hover{background:color-mix(in srgb,var(--primary-strong,#0b72e0) 90%,transparent)}.ds-btn-primary:focus-visible{outline:2px solid var(--primary,#1688ff);outline-offset:2px}.ds-btn-primary:disabled{cursor:not-allowed;opacity:.5}"
+    },
+    {
+      "name": "Danger Button",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "44px 全圆角破坏性实底按钮；danger-strong 配白字，只用于不可逆确认。",
+      "html": "<button class=\"ds-btn-danger\" type=\"button\">Delete chat</button>",
+      "css": ".ds-btn-danger{display:inline-flex;align-items:center;justify-content:center;height:44px;padding:0 20px;border:0;border-radius:9999px;background:var(--danger-strong,#c4352c);color:var(--danger-foreground,#fff);font:500 14px/1.4 Geist,ui-sans-serif,system-ui,sans-serif;cursor:pointer;transition:background-color .16s cubic-bezier(.16,1,.3,1)}.ds-btn-danger:hover{background:color-mix(in srgb,var(--danger-strong,#c4352c) 90%,transparent)}.ds-btn-danger:focus-visible{outline:2px solid var(--danger,#ff7066);outline-offset:2px}"
+    },
+    {
+      "name": "Ghost Icon Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "40px 方形图标按钮，用于侧栏的搜索与收起。",
+      "html": "<button class=\"ds-icon\" type=\"button\" aria-label=\"Search conversations\"><svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" aria-hidden=\"true\"><circle cx=\"11\" cy=\"11\" r=\"7\"/><path d=\"M21 21l-4.3-4.3\"/></svg></button>",
+      "css": ".ds-icon{display:grid;place-items:center;width:40px;height:40px;border:0;border-radius:8px;background:transparent;color:var(--muted-foreground,#a6a6a6);cursor:pointer;transition:background-color .16s cubic-bezier(.16,1,.3,1),color .16s cubic-bezier(.16,1,.3,1)}.ds-icon:hover{background:var(--surface-active,#2c2c2c);color:var(--foreground,#f4f4f4)}.ds-icon:focus-visible{outline:2px solid var(--primary,#1688ff);outline-offset:2px}"
+    },
+    {
+      "name": "Starter Chip",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "40px 全圆角 starter，空状态下建议一个可立即开始的请求。",
+      "html": "<button class=\"ds-chip\" type=\"button\"><svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18\"/></svg>Portfolio site</button>",
+      "css": ".ds-chip{display:inline-flex;align-items:center;gap:8px;min-height:40px;padding:8px 14px;border:1px solid var(--border,rgb(255 255 255 / .07));border-radius:9999px;background:transparent;color:var(--muted-foreground,#a6a6a6);font:400 13px/1.45 Geist,ui-sans-serif,system-ui,sans-serif;cursor:pointer;transition:background-color .16s cubic-bezier(.16,1,.3,1),border-color .16s cubic-bezier(.16,1,.3,1),color .16s cubic-bezier(.16,1,.3,1)}.ds-chip svg{color:var(--muted-foreground,#a6a6a6);transition:color .16s cubic-bezier(.16,1,.3,1)}.ds-chip:hover{border-color:var(--border-strong,rgb(255 255 255 / .12));background:var(--surface-raised,#242424);color:var(--foreground,#f4f4f4)}.ds-chip:hover svg{color:var(--primary,#1688ff)}.ds-chip:focus-visible{outline:2px solid var(--primary,#1688ff);outline-offset:2px}"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "44px、12px 圆角的原生输入框；focus 只换边框，不加蓝色 glow。",
+      "html": "<input class=\"ds-input\" type=\"text\" placeholder=\"Ask, plan, or build something…\" aria-label=\"Message\" />",
+      "css": ".ds-input{box-sizing:border-box;width:100%;height:44px;padding:0 12px;border:1px solid var(--border,rgb(255 255 255 / .07));border-radius:12px;background:var(--background,#1a1a1a);color:var(--foreground,#f4f4f4);font:400 14px/1.5 Geist,ui-sans-serif,system-ui,sans-serif;outline:none;transition:border-color .16s cubic-bezier(.16,1,.3,1)}.ds-input::placeholder{color:var(--muted-foreground,#a6a6a6)}.ds-input:focus{border-color:var(--muted-foreground,#a6a6a6)}.ds-input:disabled{cursor:not-allowed;opacity:.5}"
+    },
+    {
+      "name": "Navigation Row",
+      "kind": "nav",
+      "refersTo": "nav-item",
+      "description": "36px 侧栏行；当前行用 surface-active 实底而不是色条。",
+      "html": "<div class=\"ds-nav-group\"><button class=\"ds-nav\" type=\"button\"><svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M12 5v14M5 12h14\"/></svg>New Chat<span class=\"ds-kbd\">⌘N</span></button><button class=\"ds-nav is-active\" type=\"button\" aria-current=\"page\"><svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M4 19.5A2.5 2.5 0 0 1 6.5 17H20\"/><path d=\"M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z\"/></svg>Knowledge base</button></div>",
+      "css": ".ds-nav-group{display:flex;flex-direction:column;gap:2px;width:100%}.ds-nav{display:flex;align-items:center;gap:10px;width:100%;height:36px;padding:0 12px;border:0;border-radius:8px;background:transparent;color:var(--muted-foreground,#a6a6a6);font:400 14px/1.5 Geist,ui-sans-serif,system-ui,sans-serif;text-align:left;cursor:pointer;transition:background-color .16s cubic-bezier(.16,1,.3,1),color .16s cubic-bezier(.16,1,.3,1)}.ds-nav:hover,.ds-nav.is-active{background:var(--surface-active,#2c2c2c);color:var(--foreground,#f4f4f4)}.ds-nav:focus-visible{outline:2px solid var(--primary,#1688ff);outline-offset:2px}.ds-kbd{margin-left:auto;color:var(--faint,#858585);font:400 10px/1.4 'Geist Mono',ui-monospace,monospace}"
+    },
+    {
+      "name": "Mode Pill",
+      "kind": "nav",
+      "refersTo": "nav-item",
+      "description": "3 等分模式切换；激活项用 8px 圆角实底并在项间弹簧移动。",
+      "html": "<div class=\"ds-modes\" role=\"group\" aria-label=\"Workspace modes\"><button class=\"ds-mode is-active\" type=\"button\" aria-pressed=\"true\">Chat</button><button class=\"ds-mode\" type=\"button\" aria-pressed=\"false\">Agent</button><button class=\"ds-mode\" type=\"button\" aria-pressed=\"false\">Design</button></div>",
+      "css": ".ds-modes{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;width:100%}.ds-mode{height:40px;border:0;border-radius:8px;background:transparent;color:var(--muted-foreground,#a6a6a6);font:500 12px/1.4 Geist,ui-sans-serif,system-ui,sans-serif;cursor:pointer;transition:background-color .16s cubic-bezier(.16,1,.3,1),color .16s cubic-bezier(.16,1,.3,1)}.ds-mode:hover{color:var(--foreground,#f4f4f4)}.ds-mode.is-active{background:var(--surface-active,#2c2c2c);color:var(--foreground,#f4f4f4)}.ds-mode:focus-visible{outline:2px solid var(--primary,#1688ff);outline-offset:2px}"
+    },
+    {
+      "name": "Composer",
+      "kind": "custom",
+      "refersTo": "composer",
+      "description": "签名组件：3px muted 外圈形成凹槽，内层实底输入区，底部工具栏收束 attach、搜索、模型与发送。",
+      "html": "<div class=\"ds-composer\"><div class=\"ds-credits\">490 Credits Remaining</div><div class=\"ds-composer-body\"><p class=\"ds-placeholder\">Ask, plan, or build something…</p><div class=\"ds-toolbar\"><span class=\"ds-tool\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.9\" stroke-linecap=\"round\" aria-hidden=\"true\"><path d=\"M12 5v14M5 12h14\"/></svg></span><span class=\"ds-tool\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18\"/></svg></span><span class=\"ds-model\">Sonnet 5 <svg viewBox=\"0 0 24 24\" width=\"14\" height=\"14\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"m6 9 6 6 6-6\"/></svg></span><button class=\"ds-composer-send\" type=\"button\" aria-label=\"Send message\"><svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.4\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M12 19V5M5 12l7-7 7 7\"/></svg></button></div></div></div>",
+      "css": ".ds-composer{width:100%;box-sizing:border-box;padding:3px;border-radius:20px;background:var(--muted,#2c2c2c);font-family:Geist,ui-sans-serif,system-ui,sans-serif}.ds-credits{padding:8px 12px 4px;color:var(--muted-foreground,#a6a6a6);font-size:13px;line-height:1.45}.ds-composer-body{box-sizing:border-box;padding:8px;border-radius:17.6px;background:var(--background,#1a1a1a)}.ds-placeholder{margin:0;padding:8px 10px 26px;color:var(--muted-foreground,#a6a6a6);font-size:16px;line-height:1.5}.ds-toolbar{display:flex;align-items:center;gap:6px;color:var(--muted-foreground,#a6a6a6)}.ds-tool{display:grid;place-items:center;width:36px;height:36px;border-radius:9999px;font-size:18px;line-height:1}.ds-model{display:inline-flex;align-items:center;gap:6px;color:var(--foreground,#f4f4f4);font-size:13px;line-height:1.4}.ds-composer-send{display:grid;place-items:center;width:36px;height:36px;margin-left:auto;border:0;border-radius:9999px;background:var(--primary,#1688ff);color:var(--primary-foreground,#fff);cursor:pointer;transition:opacity .16s cubic-bezier(.16,1,.3,1)}.ds-composer-send:hover{opacity:.85}.ds-composer-send:focus-visible{outline:2px solid var(--ring,#1688ff);outline-offset:2px}"
+    },
+    {
+      "name": "Floating Menu",
+      "kind": "custom",
+      "refersTo": "floating-menu",
+      "description": "12px 圆角、surface-raised 实底、1px 强边框加投影；只用于覆盖内容的菜单。",
+      "html": "<div class=\"ds-menu\" role=\"menu\" aria-label=\"Account\"><div class=\"ds-menu-label\">My account</div><button class=\"ds-menu-item\" type=\"button\" role=\"menuitem\">Profile</button><button class=\"ds-menu-item is-active\" type=\"button\" role=\"menuitem\">Settings</button><div class=\"ds-menu-sep\"></div><button class=\"ds-menu-item\" type=\"button\" role=\"menuitem\">Help &amp; support</button></div>",
+      "css": ".ds-menu{box-sizing:border-box;width:224px;padding:6px;border:1px solid var(--border-strong,rgb(255 255 255 / .12));border-radius:12px;background:var(--surface-raised,#242424);box-shadow:0 16px 48px -28px rgb(0 0 0 / .55);font-family:Geist,ui-sans-serif,system-ui,sans-serif}.ds-menu-label{padding:6px 8px;color:var(--muted-foreground,#a6a6a6);font-size:12px;line-height:1.4}.ds-menu-item{display:flex;align-items:center;width:100%;height:32px;padding:0 8px;border:0;border-radius:8px;background:transparent;color:var(--foreground,#f4f4f4);font-size:14px;line-height:1.4;text-align:left;cursor:pointer}.ds-menu-item:hover,.ds-menu-item.is-active{background:var(--surface-active,#2c2c2c)}.ds-menu-item:focus-visible{outline:2px solid var(--primary,#1688ff);outline-offset:-2px}.ds-menu-sep{height:1px;margin:4px -2px;background:var(--border,rgb(255 255 255 / .07))}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Quiet Instrument",
+    "overview": "Cognacta 是企业级 agent 运行底座：agent 在服务端运行，人在这里下达意图、观察执行、接管异常。界面不是展示 AI 的橱窗，而是一台安静的仪器——大部分时间它是暗的、稳的、可读的；只有当机器需要人做决定或正在回应时，才亮起一处电光蓝。\n\n这个系统建立在石墨近黑而不是纯黑上。长时间值守时，纯黑会让 1px 细线消失，石墨保留层级；深度用色调台阶与发丝边框表达，投影只属于真正浮在内容之上的层。排版只有 Geist 一个家族，负字距只出现在 display，正文保持中性。动效分两档：结构变化用弹簧，状态反馈用 160–220ms 的快速缓出。",
+    "keyCharacteristics": [
+      "石墨近黑底，电光蓝是唯一彩度，且单屏不超过 10%",
+      "1px 发丝线与三级色调台阶分层；静态表面没有投影",
+      "Geist 单一家族；display 收字距，正文不收",
+      "248px 固定侧栏 + 单列工作区（44rem / 48rem）",
+      "弹簧只给结构变化，状态反馈 160–220ms；全量 reduced-motion 降级"
+    ],
+    "rules": [
+      {
+        "name": "The Blue Signal Rule",
+        "body": "蓝色只回答两个问题：\"这里可以行动\"和\"机器正在回应\"。不铺底、不做渐变、不做装饰性光晕；单屏蓝色面积不超过 10%。",
+        "section": "colors"
+      },
+      {
+        "name": "The No-Pure-Black Rule",
+        "body": "深色底是石墨，不是纯黑；纯黑只允许出现在图片遮罩和媒体预览。",
+        "section": "colors"
+      },
+      {
+        "name": "The Daylight Mirror Rule",
+        "body": "亮色主题是同一套层级的白昼镜像，不是反色补丁；每个中性 token 都有对应的 light 值，切换主题不改变信息层级。",
+        "section": "colors"
+      },
+      {
+        "name": "The Text-Safe Fill Rule",
+        "body": "任何承载白色文字的实底按钮使用 primary-strong 或 danger-strong；primary / danger 只用于图标、文字、边框和 focus，保证信号色在深色底与白字之间都成立。",
+        "section": "colors"
+      },
+      {
+        "name": "The One Family Rule",
+        "body": "拉丁字形只有 Geist 一个家族；不引入第二套展示字体，不用衬线制造\"编辑感\"。",
+        "section": "typography"
+      },
+      {
+        "name": "The Tracking Floor Rule",
+        "body": "负字距只属于 display 与 headline，最深 -0.04em；正文、标签、按钮一律 0。",
+        "section": "typography"
+      },
+      {
+        "name": "The Mono Is Data Rule",
+        "body": "等宽只用于快捷键、ID、代码和需要对齐的数值；不用它给普通标签制造\"技术感\"。",
+        "section": "typography"
+      },
+      {
+        "name": "The Rail Rule",
+        "body": "侧栏固定 248px，不随视口变宽；信息密度靠行高与分组建立，不靠拉伸。",
+        "section": "layout"
+      },
+      {
+        "name": "The One Column Rule",
+        "body": "工作区永远是一列。需要并列比较时用行内分组或临时浮层，不把页面拆成卡片矩阵。",
+        "section": "layout"
+      },
+      {
+        "name": "The Border-or-Shadow Rule",
+        "body": "静态表面只用边框；浮层才同时拥有边框与投影。两者不在同一张卡片上重复声明。",
+        "section": "elevation"
+      },
+      {
+        "name": "The Frosted Layer Rule",
+        "body": "背景模糊只给瞬时浮层和模态背板；内容卡片、侧栏、composer 永远实色。",
+        "section": "elevation"
+      },
+      {
+        "name": "The 8/12/16 Rule",
+        "body": "可点击的小控制件 8px，输入与面板 12px，容器 16px；同一视图内不超过三档圆角。",
+        "section": "shapes"
+      }
+    ],
+    "dos": [
+      "Do 让电光蓝保持稀缺：单屏 ≤10%，只给主操作、当前状态、链接和 focus。",
+      "Do 用 1px 发丝线与色调台阶建立层级；静态表面不加投影。",
+      "Do 保持正文与 placeholder ≥4.5:1；faint 只用于 10–12px 的三级信息。",
+      "Do 用 248px 侧栏 + 单列工作区；把复杂度收进浮层和抽屉。",
+      "Do 结构变化用弹簧，状态反馈用 160–220ms 缓出；两者不要互换。",
+      "Do 保持 Geist 单一家族，display 最深只收到 -0.04em。",
+      "Do 在承载白字的实底按钮上使用 primary-strong / danger-strong，保证 ≥4.5:1。"
+    ],
+    "donts": [
+      "Don't 引入第二个品牌色、第二套展示字体或衬线字体。",
+      "Don't 使用渐变文字、发光 orb、星光粒子或\"AI 感\"装饰。",
+      "Don't 在内容卡片、侧栏或 composer 上使用背景模糊；磨砂只给浮层。",
+      "Don't 把页面拆成同尺寸卡片矩阵或嵌套卡片；工作区是一列。",
+      "Don't 用纯黑做底，或用大面积蓝色铺底。",
+      "Don't 用亮信号色承载小字号白字；实底按钮走 deep 变体。",
+      "Don't 在标题上方加全大写宽字距的 eyebrow；分组标签只属于导航和菜单。",
+      "Don't 用投影替代边框，或让边框和投影在同一张静态卡片上同时出现。"
+    ]
+  }
+}
