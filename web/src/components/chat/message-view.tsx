@@ -173,9 +173,14 @@ export function MessageView({
           ),
         )}
         {message.state === "failed" && (
-          <div className="flex items-center gap-2 text-sm text-destructive">
-            <HugeiconsIcon icon={AlertCircleIcon} className="size-4" />
-            <span>回复中断，已保留已输出的内容。</span>
+          <div
+            role="alert"
+            className="flex min-w-0 flex-wrap items-center gap-2 text-sm text-destructive"
+          >
+            <HugeiconsIcon icon={AlertCircleIcon} className="size-4 shrink-0" />
+            <span className="min-w-0 break-words">
+              {message.error?.message ?? "回复中断，已保留已输出的内容。"}
+            </span>
             <Button variant="ghost" size="sm" disabled={retryDisabled} onClick={onRetry}>
               <HugeiconsIcon icon={RefreshCcwIcon} className="size-4" />
               重试

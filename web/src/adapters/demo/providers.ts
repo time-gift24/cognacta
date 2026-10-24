@@ -1,5 +1,5 @@
 import type { ModelSource } from "@/models/source"
-import type { ChatGateway } from "@/chat/gateway"
+import type { ChatGateway, ChatInputCheck } from "@/chat/gateway"
 import {
   providerModelId,
   validateProviderInput,
@@ -144,6 +144,9 @@ export function createDemoProviders(): {
     wrapGateway(gateway) {
       let pinned: { id: string; revision: number } | undefined
       return {
+        ...(gateway.checkInput
+          ? { checkInput: (input: ChatInputCheck) => gateway.checkInput!(input) }
+          : {}),
         abort: () => gateway.abort(),
         async *stream(request) {
           const selectedId =

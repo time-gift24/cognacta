@@ -1,0 +1,100 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Submit recovery regression check</title>
+<!-- Run npm run dev, then open /tests/submit-recovery.browser.html. No backend required. -->
+<div id="fixture"></div>
+<pre id="result">Running…</pre>
+<script type="module">
+  import React from "react";
+  import { createRoot } from "react-dom/client";
+  import { flushSync } from "react-dom";
+  import "/src/index.css";
+  import { ChatComposer } from "/src/components/chat/chat-composer.tsx";
+  import { ThreadStoreImpl } from "/src/chat/thread-store.ts";
+  import { validateAttachments } from "/src/chat/attachments.ts";
+  import { DEMO_MODELS } from "/src/adapters/demo/resources.ts";
+  import { createTestDependencies, withDependencies } from "/tests/support.tsx";
+
+  const fixture = document.querySelector("#fixture");
+  const result = document.querySelector("#result");
+  const root = createRoot(fixture);
+  const dependencies = createTestDependencies();
+  const render = element => root.render(withDependencies(element, dependencies));
+  const editor = () => fixture.querySelector('[role="textbox"]');
+  const sendButton = () => fixture.querySelector('button[aria-label="发送"]');
+  const alertText = () => fixture.querySelector('[data-slot="chat-composer-anchor"] [role="alert"]')?.textContent ?? "";
+  const attachmentButtons = () => fixture.querySelectorAll('button[aria-label^="移除附件 "]');
+  const assert = (condition, message) => { if (!condition) throw new Error(message); };
+  const wait = (ms = 0) => new Promise(resolve => setTimeout(resolve, ms));
+  const until = async (condition, message) => {
+    const deadline = performance.now() + 5000;
+    while (!condition() && performance.now() < deadline) await wait(10);
+    assert(condition(), message);
+  };
+  const click = element => flushSync(() => element.click());
+  const insert = text => flushSync(() => {
+    editor().focus();
+    assert(document.execCommand("insertText", false, text), "Native insertion failed");
+  });
+  const attach = file => flushSync(() => {
+    const input = fixture.querySelector('input[type="file"]');
+    const files = new DataTransfer();
+    files.items.add(file);
+    input.files = files.files;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+
+  try {
+    // 1. Preflight rejects an unsupported attachment without consuming the draft.
+    const preflight = new ThreadStoreImpl("preflight-ui", {
+      abort() {},
+      checkInput: ({ attachments }) => validateAttachments(attachments ?? []),
+      async *stream() { throw new Error("preflight must not reach the stream"); },
+    });
+    flushSync(() => render(React.createElement(ChatComposer, { store: preflight, models: DEMO_MODELS })));
+    attach(new File(["%PDF-1.7"], "report.pdf", { type: "application/pdf" }));
+    insert("请解析这个 PDF");
+    await until(() => !sendButton().disabled, "Draft must be sendable before preflight");
+    click(sendButton());
+    assert(preflight.getState().messages.length === 0, "Rejected preflight must not create a turn");
+    assert(editor().textContent === "请解析这个 PDF", "Rejected preflight must keep the text");
+    assert(attachmentButtons().length === 1, "Rejected preflight must keep the attachment");
+    await until(() => alertText().includes("暂不支持附件类型"), "Rejected preflight must explain itself beside the input");
+    assert(preflight.getState().submitError?.kind === "invalid-request", "Preflight error must be a submit error");
+
+    // 2. A failure before the generation starts restores the submitted draft.
+    const failures = [];
+    const recovering = new ThreadStoreImpl("recovering-ui", {
+      abort() {},
+      async *stream() {
+        yield await new Promise(resolve => failures.push(resolve));
+      },
+    });
+    flushSync(() => render(React.createElement(ChatComposer, { store: recovering, models: DEMO_MODELS })));
+    const file = new File(["original"], "notes.txt", { type: "text/plain" });
+    insert("原始问题");
+    attach(file);
+    await until(() => !sendButton().disabled, "Draft must be sendable");
+    click(sendButton());
+    await until(() => editor().textContent === "", "Accepted send must clear the draft text");
+    await until(() => recovering.getDraft().attachments.length === 0, "Accepted send must clear the draft attachment");
+    insert("后来输入");
+    await until(() => recovering.getDraft().text === "后来输入", "Typing after submit must update the draft");
+    failures[0]({ type: "failed", stage: "submit", error: { kind: "invalid-request", message: "附件文件已不可用，请重新选择。" } });
+    await until(() => alertText().includes("附件文件已不可用"), "Submit failure must surface beside the input");
+    assert(recovering.getState().messages.length === 0, "Submit failure must not leave a turn");
+    assert(editor().innerText === "原始问题\n\n后来输入", `Restoration must prepend the failed draft without overwriting newer input (got ${JSON.stringify(editor().innerText)})`);
+    assert(attachmentButtons().length === 1, "Submit failure must restore the attachment");
+    assert(recovering.getDraft().attachments[0]?.file === file, "Restored attachment must keep the original File");
+    assert(recovering.getDraft().model === "pine-1", "Submit failure must restore the model");
+    insert("!");
+    await until(() => recovering.getState().submitError === undefined && !alertText(), "Editing the restored draft must dismiss the submit error");
+
+    result.textContent = "PASS: attachment preflight keeps the draft, submit failure restores text/attachments/model without overwriting newer input, and the error lives beside the composer";
+    result.dataset.passed = "true";
+  } catch (error) {
+    result.textContent = `FAIL: ${error.message}`;
+    result.dataset.passed = "false";
+    throw error;
+  }
+</script>

@@ -1,0 +1,100 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Fixed model states regression check</title>
+<!-- Run npm run dev, then open /tests/fixed-model.browser.html. No backend required. -->
+<div id="fixture"></div>
+<pre id="result">Running…</pre>
+<script type="module">
+  import React from "react";
+  import { createRoot } from "react-dom/client";
+  import { flushSync } from "react-dom";
+  import "/src/index.css";
+  import { ChatScreen } from "/src/components/chat/chat-screen.tsx";
+  import { DEMO_MODELS } from "/src/adapters/demo/resources.ts";
+  import { createTestDependencies, withDependencies } from "/tests/support.tsx";
+
+  const fixture = document.querySelector("#fixture");
+  const result = document.querySelector("#result");
+  const root = createRoot(fixture);
+  const reads = [];
+  const runs = {
+    bindSession() {},
+    list: async () => [],
+    get: async () => { throw new Error("unused"); },
+    snapshot() {
+      return new Promise((resolve, reject) => reads.push({ resolve, reject }));
+    },
+  };
+  const dependencies = createTestDependencies({ runs });
+  const render = element => root.render(withDependencies(element, dependencies));
+  const assert = (condition, message) => { if (!condition) throw new Error(message); };
+  const wait = (ms = 0) => new Promise(resolve => setTimeout(resolve, ms));
+  const until = async (condition, message) => {
+    const deadline = performance.now() + 8000;
+    while (!condition() && performance.now() < deadline) await wait(20);
+    assert(condition(), message);
+  };
+  const button = label => [...fixture.querySelectorAll("button")].find(element => element.getAttribute("aria-label") === label || element.textContent.trim() === label);
+  const click = element => { assert(element && !element.disabled, "Expected an enabled control"); flushSync(() => element.click()); };
+  const restoreThread = (threadId) => {
+    const restored = dependencies.threads.get(threadId).restore({
+      version: 1,
+      state: {
+        threadId,
+        status: "idle",
+        messages: [{ id: "m-1", role: "user", parts: [{ kind: "text", text: "历史问题" }], state: "done" }],
+      },
+    });
+    assert(restored, `Thread ${threadId} must accept the history fixture`);
+  };
+  const mount = (threadId) => flushSync(() => render(React.createElement(React.StrictMode, null,
+    React.createElement(ChatScreen, {
+      key: threadId,
+      threadId,
+      models: DEMO_MODELS,
+      suggestions: [],
+    }))));
+
+  try {
+    // Loading → ready.
+    restoreThread("fixed-loading");
+    mount("fixed-loading");
+    await until(() => reads.length === 1, "A non-empty thread must read its model snapshot");
+    await until(() => fixture.textContent.includes("正在读取固定模型…"), "Pending snapshot must show a loading state");
+    reads[0].resolve({ model: "gpt-5.6" });
+    await until(() => fixture.querySelector('[aria-label="本会话固定模型"]')?.textContent === "GPT 5.6", "Resolved snapshot must show the fixed model");
+
+    // Read failure → retry → ready.
+    restoreThread("fixed-error");
+    mount("fixed-error");
+    await until(() => reads.length === 2, "Second thread must start its own read");
+    reads[1].reject(new Error("snapshot unavailable"));
+    await until(() => fixture.textContent.includes("固定模型读取失败"), "Failed read must not leave the loading label forever");
+    click(button("重试"));
+    await until(() => reads.length === 3, "Retry must read the snapshot again");
+    reads[2].resolve({ model: "sonnet-5" });
+    await until(() => fixture.querySelector('[aria-label="本会话固定模型"]')?.textContent === "Sonnet 5", "Retry must recover the fixed model");
+
+    // No snapshot → explicit selection entry.
+    restoreThread("fixed-empty");
+    mount("fixed-empty");
+    await until(() => reads.length === 4, "Third thread must start its own read");
+    reads[3].resolve(null);
+    await until(() => fixture.textContent.includes("本会话未记录固定模型"), "Missing snapshot must be explicit");
+    const selector = button("选择模型");
+    assert(selector, "Missing snapshot must offer a model selection entry");
+    click(selector);
+    await wait(50);
+    const option = [...document.querySelectorAll('[role="menuitemradio"]')].find(element => element.textContent.trim() === "Opus 4.8");
+    assert(option, "Model choices must be available");
+    flushSync(() => option.click());
+    await until(() => fixture.querySelector('[aria-label="本会话固定模型"]')?.textContent === "Opus 4.8", "Chosen fallback must become the fixed identity");
+
+    result.textContent = "PASS: fixed model distinguishes loading, read failure with retry, missing snapshot with selection, and a resolved identity";
+    result.dataset.passed = "true";
+  } catch (error) {
+    result.textContent = `FAIL: ${error.message}`;
+    result.dataset.passed = "false";
+    throw error;
+  }
+</script>

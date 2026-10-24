@@ -16,6 +16,7 @@ import {
   readRpcError,
   string,
 } from "./protocol"
+import { validateAttachments } from "@/chat/attachments.ts"
 import { safeHttpUrl, serializeRequest } from "./attachments"
 
 /** The SDK boundary is injected so the same lifecycle is tested without a native window. */
@@ -62,8 +63,13 @@ const failure = (
     | "transport"
     | "invalid-request"
     | "aborted"
-    | "invalid-response" = "transport"
-): ChatEvent => ({ type: "failed", error: { kind, message } })
+    | "invalid-response" = "transport",
+  stage?: "submit" | "run"
+): ChatEvent => ({
+  type: "failed",
+  error: { kind, message },
+  ...(stage ? { stage } : {}),
+})
 
 function readSettings(value: unknown): DesktopSettings {
   const { maxConcurrentRuns } = object(value)
@@ -439,16 +445,22 @@ export function createTauriRuntime(bridge: TauriBridge) {
     let currentRun: PendingRun | undefined
     return {
       appendOnly: true,
+      checkInput: ({ attachments }) =>
+        validateAttachments(attachments ?? []),
       async *stream(input: ChatRequest) {
         if (!connected || disposed) {
-          yield failure("桌面服务未连接，请重新打开应用。")
+          yield failure("桌面服务未连接，请重新打开应用。", "transport", "submit")
           return
         }
         if (
           tasksOf().some((task) => task.threadId === threadId) ||
           navigating.has(threadId)
         ) {
-          yield failure("此会话有任务正在执行，请等待结束。", "invalid-request")
+          yield failure(
+            "此会话有任务正在执行，请等待结束。",
+            "invalid-request",
+            "submit"
+          )
           return
         }
         const run: PendingRun = {
@@ -488,7 +500,8 @@ export function createTauriRuntime(bridge: TauriBridge) {
               run,
               failure(
                 error instanceof Error ? error.message : "任务输入不可用。",
-                "invalid-request"
+                "invalid-request",
+                "submit"
               )
             )
             await bridge
@@ -527,6 +540,7 @@ export function createTauriRuntime(bridge: TauriBridge) {
             push(run, {
               type: "failed",
               error: readRpcError(error, "任务未能连接桌面服务，请重试。"),
+              stage: "submit",
             })
             await bridge
               .invoke("runtime_release_run", { runId: run.runId })

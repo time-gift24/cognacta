@@ -37,6 +37,12 @@ const LABELS: Partial<AgentChatCreditsLabels> = {
   previewAttachment: (name) => `预览 ${name}`,
 }
 
+export type ComposerFixedModel =
+  | { status: "ready"; model: string }
+  | { status: "loading" }
+  | { status: "empty" }
+  | { status: "error" };
+
 /** 失败后仍可继续输入，error 仅作语义标记。 */
 function toComposerStatus(status: string): AgentChatInputStatus {
   if (status === "stopping") return "streaming"
@@ -49,11 +55,16 @@ export function ChatComposer({
   store,
   models,
   locked = false,
+  fixedModel,
+  onRetryFixedModel,
   className,
 }: {
   store: ThreadStore
   models: readonly ModelChoice[]
+  /** 会话已有消息；模型身份仍由 fixedModel 决定是否可选。 */
   locked?: boolean
+  fixedModel?: ComposerFixedModel
+  onRetryFixedModel?: () => void
   className?: string
 }) {
   const { desktop } = useAppDependencies()
@@ -66,23 +77,29 @@ export function ChatComposer({
     store.subscribe,
     () => store.getState().status
   )
-  const threadError = React.useSyncExternalStore(
+  const submitError = React.useSyncExternalStore(
     store.subscribe,
-    () => store.getState().error?.message
+    () => store.getState().submitError?.message
   )
   const draft = React.useSyncExternalStore(
     store.subscribeDraft,
     store.getDraft,
     store.getDraft
   )
-  const model = locked
-    ? (draft.model ?? "")
-    : draft.model
-      ? (models.find((choice) => choice.id === draft.model)?.id ?? "")
-      : (models.find((choice) => choice.isDefault)?.id ?? "")
+  const fixed =
+    fixedModel?.status === "ready" ? fixedModel.model : undefined
+  const model = fixed
+    ? fixed
+    : locked
+      ? (draft.model ?? "")
+      : draft.model
+        ? (models.find((choice) => choice.id === draft.model)?.id ?? "")
+        : (models.find((choice) => choice.isDefault)?.id ?? "")
+  // 无快照时没有可固定的身份，允许这次重新选择；读取失败只提供重试。
+  const canChooseModel = !locked || fixedModel?.status === "empty"
   const modelLabel =
     models.find((choice) => choice.id === model)?.label ??
-    providerModelLabel(model)
+    (model ? providerModelLabel(model) : "")
   const task = threadTask(desktopState, store.getState().threadId)
   const ownsTask = task?.threadId === store.getState().threadId
   const approval = ownsTask ? task?.approval : undefined
@@ -99,17 +116,17 @@ export function ChatComposer({
           runtime={desktop}
           task={task}
           approval={approval}
-          error={threadError}
+          error={submitError}
           draft={draft.approval}
           onDraftChange={(approval) => store.updateDraft({ approval })}
           onStop={() => store.stop()}
         />
-      ) : ownsTask && (task?.error || threadError) ? (
+      ) : task?.error || submitError ? (
         <p
           role="alert"
-          className="absolute inset-x-0 bottom-[calc(100%+12px)] text-xs text-destructive"
+          className="absolute inset-x-0 bottom-[calc(100%+12px)] text-xs break-words text-destructive"
         >
-          {task?.error ?? threadError}
+          {task?.error ?? `发送失败：${submitError}`}
         </p>
       ) : !task && !model ? (
         <p
@@ -135,7 +152,7 @@ export function ChatComposer({
         model={model}
         defaultModel=""
         onModelChange={(model) => {
-          if (!locked) store.updateDraft({ model })
+          if (canChooseModel) store.updateDraft({ model })
         }}
         attachments={draft.attachments}
         onAttachmentsChange={(attachments) =>
@@ -170,16 +187,44 @@ export function ChatComposer({
               <AgentComposerAttach />
             </div>
             <div className="flex shrink-0 items-center gap-1">
-              {locked ? (
+              {locked && fixedModel?.status === "error" && !modelLabel ? (
+                <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <span>固定模型读取失败</span>
+                  {onRetryFixedModel ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={onRetryFixedModel}
+                    >
+                      重试
+                    </Button>
+                  ) : null}
+                </span>
+              ) : locked && fixedModel?.status === "loading" && !modelLabel ? (
+                <span
+                  role="status"
+                  aria-label="本会话固定模型"
+                  className="px-1.5 text-xs text-muted-foreground"
+                >
+                  正在读取固定模型…
+                </span>
+              ) : canChooseModel ? (
+                <>
+                  {locked && fixedModel?.status === "empty" ? (
+                    <span className="px-1.5 text-xs text-muted-foreground">
+                      本会话未记录固定模型
+                    </span>
+                  ) : null}
+                  <AgentComposerModel />
+                </>
+              ) : (
                 <span
                   aria-label="本会话固定模型"
                   title={modelLabel}
                   className="max-w-56 truncate px-1.5 text-xs text-muted-foreground"
                 >
-                  {modelLabel || "正在读取固定模型…"}
+                  {modelLabel}
                 </span>
-              ) : (
-                <AgentComposerModel />
               )}
               {task ? (
                 <Button

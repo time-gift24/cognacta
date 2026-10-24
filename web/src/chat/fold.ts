@@ -56,6 +56,8 @@ export interface ChatMessageView {
   state: MessageState;
   /** 用户消息携带的附件（仅展示用途）。 */
   attachments?: { name: string; mediaType: string }[];
+  /** 这个回合自己的终止原因；界面不依赖仍存在的运行任务。 */
+  error?: ChatError;
 }
 
 export type ThreadStatus = "idle" | "submitted" | "streaming" | "stopping" | "failed";
@@ -66,7 +68,10 @@ export interface ThreadViewState {
   messages: ChatMessageView[];
   metadata?: ChatMetadata;
   usage?: ChatUsage;
+  /** 最近一次终止原因；与 submitError 一起保留兼容的读取入口。 */
   error?: ChatError;
+  /** 提交在生成开始前被拒绝；显示在输入框旁，不写入回合。 */
+  submitError?: ChatError;
 }
 
 export function createThreadState(threadId: ThreadId): ThreadViewState {
@@ -93,6 +98,7 @@ export function appendUserMessage(
     ...state,
     status: "submitted",
     error: undefined,
+    submitError: undefined,
     messages: [...state.messages, message],
   };
 }
@@ -197,7 +203,7 @@ export function foldChatEvent(
     case "started":
       return withInFlightAssistant(
         { ...state, status: "streaming", metadata: event.metadata, usage: undefined },
-        (message) => ({ ...message, parts: [], state: "streaming" }),
+        (message) => ({ ...message, parts: [], state: "streaming", error: undefined }),
         true,
         messageId,
       );
@@ -262,6 +268,7 @@ export function foldChatEvent(
         (message) => ({
           ...message,
           state: "done",
+          error: undefined,
           parts: reconcileCompletedParts(message.parts, event.response.assistant.parts),
         }),
         false,
@@ -273,7 +280,7 @@ export function foldChatEvent(
         { ...state, status: "failed", error: event.error },
         (message) =>
           message.state === "streaming"
-            ? { ...message, state: "failed" }
+            ? { ...message, state: "failed", error: event.error }
             : message,
         false,
         messageId,

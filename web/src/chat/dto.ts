@@ -83,7 +83,12 @@ export type ChatEvent =
   | { type: "part-completed"; partId: PartId; content: OutputContent }
   | { type: "usage"; usage: ChatUsage }
   | { type: "completed"; response: ChatResponse }
-  | { type: "failed"; error: ChatError };
+  /**
+   * `submit` fails before a generation exists (input preparation or runtime
+   * admission); the turn is not part of the conversation and the draft is
+   * restored. Omitted means the failure belongs to a started turn.
+   */
+  | { type: "failed"; error: ChatError; stage?: "submit" | "run" };
 
 /** 运行态输入引用由 adapter 读取；消息快照只保存附件名称和媒体类型。 */
 export interface ChatInputAttachment {

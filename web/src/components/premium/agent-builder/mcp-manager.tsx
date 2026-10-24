@@ -1,4 +1,5 @@
 import { useRef, useState } from "react"
+import { useAppDependencies } from "@/app/dependencies"
 import type { AgentSource, McpConfiguration, McpServer } from "@/agents/source"
 import { Button } from "@/components/motion/button"
 import { Input } from "@/components/motion/input"
@@ -23,6 +24,7 @@ export function McpManager({
   const [form, setForm] = useState<McpConfiguration>(empty)
   const [editing, setEditing] = useState(false)
   const [busy, setBusy] = useState(false)
+  const { host } = useAppDependencies()
   const toast = useToast()
   const lock = useRef(false)
   const clearNotices = () => {
@@ -108,13 +110,30 @@ export function McpManager({
                 size="sm"
                 variant="ghost"
                 disabled={busy}
-                onClick={() =>
-                  void perform(async () => {
-                    await source.removeMcp!(server.id)
-                    await onChanged()
-                    return "已删除本地 MCP 配置。使用此服务的 Agent 需要重新选择能力。"
-                  })
-                }
+                onClick={() => {
+                  if (busy) return
+                  void host
+                    .confirm(
+                      `删除 MCP 服务「${server.name}」？引用它的 Agent 会失去这些工具，需要重新选择能力。此操作不可撤销。`
+                    )
+                    .then(
+                      (confirmed) => {
+                        if (!confirmed) return
+                        void perform(async () => {
+                          await source.removeMcp!(server.id)
+                          await onChanged()
+                          return "已删除本地 MCP 配置。使用此服务的 Agent 需要重新选择能力。"
+                        })
+                      },
+                      () => {
+                        toast.notify({
+                          key: "mcp-error",
+                          title: "无法确认删除，请重试。",
+                          tone: "error",
+                        })
+                      }
+                    )
+                }}
               >
                 删除
               </Button>

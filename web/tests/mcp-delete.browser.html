@@ -1,0 +1,94 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>MCP deletion confirmation regression check</title>
+<!-- Run npm run dev, then open /tests/mcp-delete.browser.html. No backend required. -->
+<div id="fixture"></div>
+<pre id="result">Running…</pre>
+<script type="module">
+  import React from "react";
+  import { createRoot } from "react-dom/client";
+  import { flushSync } from "react-dom";
+  import "/src/index.css";
+  import { McpManager } from "/src/components/premium/agent-builder/mcp-manager.tsx";
+  import { createTestDependencies, withDependencies } from "/tests/support.tsx";
+
+  const fixture = document.querySelector("#fixture");
+  const result = document.querySelector("#result");
+  const root = createRoot(fixture);
+  const confirmations = [];
+  let confirmed = false;
+  let failRemove = false;
+  const removals = [];
+  let changed = 0;
+  const server = {
+    id: "mcp-team",
+    name: "团队知识库",
+    description: "内部资料",
+    url: "https://example.test/mcp",
+    capabilities: { tools: [{ name: "search" }], resources: [], prompts: [] },
+  };
+  const source = {
+    async load() { return { agents: [], resources: { mcpServers: [server], tools: [], skills: [] } }; },
+    async save() {},
+    async saveMcp() {},
+    async removeMcp(id) {
+      removals.push(id);
+      if (failRemove) throw new Error("MCP 删除失败，请重试。");
+    },
+    async testMcp() { return server.capabilities; },
+  };
+  const dependencies = createTestDependencies({
+    host: {
+      async copyText() {},
+      async openExternal() {},
+      async confirm(message) { confirmations.push(message); return confirmed; },
+    },
+  });
+  const render = () => flushSync(() => root.render(withDependencies(React.createElement(McpManager, {
+    source,
+    servers: [server],
+    onChanged: async () => { changed += 1; },
+  }), dependencies)));
+  const assert = (condition, message) => { if (!condition) throw new Error(message); };
+  const wait = (ms = 0) => new Promise(resolve => setTimeout(resolve, ms));
+  const until = async (condition, message) => {
+    const deadline = performance.now() + 5000;
+    while (!condition() && performance.now() < deadline) await wait(20);
+    assert(condition(), message);
+  };
+  const button = label => [...fixture.querySelectorAll("button")].find(element => element.getAttribute("aria-label") === label || element.textContent.trim() === label);
+  const click = element => { assert(element && !element.disabled, "Expected an enabled control"); flushSync(() => element.click()); };
+
+  try {
+    render();
+    const details = fixture.querySelector("details");
+    details.open = true;
+
+    click(button("删除"));
+    await until(() => confirmations.length === 1, "Deleting MCP must ask for confirmation");
+    assert(confirmations[0].includes("团队知识库"), "Confirmation must name the exact MCP server");
+    assert(confirmations[0].includes("Agent") && confirmations[0].includes("重新选择能力"), "Confirmation must explain the impact on other Agents");
+    assert(removals.length === 0, "Cancel must not delete");
+    assert(!fixture.textContent.includes("已删除"), "Cancel must not report a deletion");
+
+    confirmed = true;
+    click(button("删除"));
+    await until(() => removals.length === 1 && changed === 1, "Confirmed deletion must run once");
+    await until(() => fixture.textContent.includes("已删除本地 MCP 配置"), "Successful deletion must report its result");
+
+    failRemove = true;
+    click(button("删除"));
+    await until(() => removals.length === 2 && fixture.textContent.includes("MCP 删除失败"), "Failure must stay visible for retry");
+    assert(changed === 1, "Failed deletion must not refresh the list");
+    failRemove = false;
+    click(button("删除"));
+    await until(() => removals.length === 3 && changed === 2, "The same row must remain retryable after a failure");
+
+    result.textContent = "PASS: MCP deletion names the object, explains cross-Agent impact, respects cancel, and keeps the row retryable after failure";
+    result.dataset.passed = "true";
+  } catch (error) {
+    result.textContent = `FAIL: ${error.message}`;
+    result.dataset.passed = "false";
+    throw error;
+  }
+</script>

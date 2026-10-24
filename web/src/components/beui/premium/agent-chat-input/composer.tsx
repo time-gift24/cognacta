@@ -323,6 +323,8 @@ export const AgentChatComposer = forwardRef<
   const lineHeightRem = presentation.editorLineHeightRem ?? DEFAULT_LINE_HEIGHT_REM;
   const editorRef = useRef<HTMLDivElement>(null);
   const composing = useRef(false);
+  /** Safari sends the composition-closing keydown after compositionend. */
+  const composingUntil = useRef(0);
   const acceptedHTML = useRef("");
   const [, reconcile] = useReducer((n: number) => n + 1, 0);
   const skillsRef = useRef(skills);
@@ -436,7 +438,17 @@ export const AgentChatComposer = forwardRef<
   );
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (disabled || event.nativeEvent.isComposing || composing.current) return;
+    const native = event.nativeEvent;
+    // keyCode 229 is the legacy signal engines emit during IME input without
+    // isComposing; the time window covers Safari's late composition-closing key.
+    if (
+      disabled ||
+      native.isComposing ||
+      native.keyCode === 229 ||
+      composing.current ||
+      Date.now() < composingUntil.current
+    )
+      return;
     if (onNavKeyDown?.(event)) {
       return;
     }
@@ -448,13 +460,10 @@ export const AgentChatComposer = forwardRef<
       return;
     }
 
-    if (
-      submitOnEnter &&
-      event.key === "Enter" &&
-      !event.shiftKey &&
-      !event.nativeEvent.isComposing
-    ) {
+    if (submitOnEnter && event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
+      // Holding Enter must not append the same submission repeatedly.
+      if (event.repeat) return;
       onSubmit?.();
     }
   }
@@ -486,6 +495,7 @@ export const AgentChatComposer = forwardRef<
       }}
       onCompositionEnd={() => {
         composing.current = false;
+        composingUntil.current = Date.now() + 10;
         emit();
       }}
       onPaste={(event) => {

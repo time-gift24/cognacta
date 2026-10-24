@@ -8,7 +8,10 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { useAppDependencies } from "@/app/dependencies"
 import { threadTask } from "@/desktop/runtime"
 import { useThreadStore } from "@/chat/react.ts"
-import { ChatComposer } from "@/components/chat/chat-composer"
+import {
+  ChatComposer,
+  type ComposerFixedModel,
+} from "@/components/chat/chat-composer"
 import {
   ChatThreadLoading,
   preloadChatThread,
@@ -18,6 +21,7 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 import { SPRING_PANEL } from "@/lib/ease"
 import type { ModelChoice } from "@/models/source"
 import { providerModelLabel } from "@/providers/source"
+import type { RunSnapshot, RunSource } from "@/runs/source"
 
 const SUGGESTIONS = [
   "为什么这次构建这么慢？",
@@ -191,12 +195,29 @@ export function ChatScreen({
   const screenRef = React.useRef<HTMLDivElement>(null)
   const widthPreference = React.useRef(readChatWidthPreference())
   const [chatWidth, setChatWidth] = React.useState<number | null>(null)
-  const [modelSnapshot, setModelSnapshot] = React.useState<{
+  const [modelSnapshot, setModelSnapshot] = React.useState<
+    | { threadId: string; status: "loading" }
+    | { threadId: string; status: "ready"; model: string }
+    | { threadId: string; status: "empty" }
+    | { threadId: string; status: "error" }
+    | null
+  >(null)
+  const [snapshotAttempt, setSnapshotAttempt] = React.useState(0)
+  // StrictMode mounts effects twice: both runs must share one read instead of
+  // discarding the first run's result with its cleanup.
+  const snapshotRequest = React.useRef<{
     threadId: string
-    model: string
+    attempt: number
+    source: RunSource
+    promise: Promise<RunSnapshot | null>
   } | null>(null)
+  const settledSnapshot = React.useRef<string | null>(null)
   const fixedModel =
-    modelSnapshot?.threadId === threadId ? modelSnapshot.model : null
+    modelSnapshot?.threadId === threadId && modelSnapshot.status === "ready"
+      ? modelSnapshot.model
+      : null
+  const snapshotStatus =
+    modelSnapshot?.threadId === threadId ? modelSnapshot.status : "idle"
   const desktopTask = React.useSyncExternalStore(
     desktop.subscribe,
     () => threadTask(desktop.getState(), threadId),
@@ -211,24 +232,76 @@ export function ChatScreen({
     store.subscribeDraft,
     () => store.getDraft().model
   )
+  const threadStatus = React.useSyncExternalStore(
+    store.subscribe,
+    () => store.getState().status
+  )
+  const threadBusy =
+    threadStatus === "submitted" ||
+    threadStatus === "streaming" ||
+    threadStatus === "stopping"
   React.useEffect(() => {
-    if (!runs || empty || desktopTask) return
+    if (!runs || empty || desktopTask || threadBusy) return
+    const key = `${threadId}:${snapshotAttempt}`
+    if (settledSnapshot.current === key) return
     let live = true
-    void runs
-      .snapshot(threadId)
-      .then((snapshot) => {
-        if (!live || typeof snapshot?.model !== "string") return
-        setModelSnapshot({ threadId, model: snapshot.model })
-        store.updateDraft({ model: snapshot.model })
-      })
-      .catch(() => {
-        /* Run history exposes snapshot read failures and supports retry. */
-      })
+    const cached = snapshotRequest.current
+    const request =
+      !cached ||
+      cached.threadId !== threadId ||
+      cached.attempt !== snapshotAttempt ||
+      cached.source !== runs
+        ? (snapshotRequest.current = {
+            threadId,
+            attempt: snapshotAttempt,
+            source: runs,
+            promise: runs.snapshot(threadId),
+          })
+        : cached
+    setModelSnapshot((current) =>
+      current?.threadId === threadId && current.status === "ready"
+        ? current
+        : { threadId, status: "loading" }
+    )
+    void request.promise.then(
+      (snapshot) => {
+        if (!live) return
+        settledSnapshot.current = key
+        const model =
+          snapshot && typeof snapshot.model === "string"
+            ? snapshot.model
+            : null
+        if (model) {
+          setModelSnapshot({ threadId, status: "ready", model })
+          store.updateDraft({ model })
+        } else setModelSnapshot({ threadId, status: "empty" })
+      },
+      () => {
+        if (!live) return
+        settledSnapshot.current = key
+        setModelSnapshot({ threadId, status: "error" })
+      }
+    )
     return () => {
       live = false
     }
-  }, [runs, threadId, empty, desktopTask, store])
+  }, [runs, threadId, empty, desktopTask, threadBusy, store, snapshotAttempt])
+  const retryFixedModel = React.useCallback(() => {
+    settledSnapshot.current = null
+    setSnapshotAttempt((value) => value + 1)
+  }, [])
   const actualFixedModel = fixedModel ?? (!empty ? draftModel : null)
+  const fixedModelState: ComposerFixedModel | undefined = empty
+    ? undefined
+    : actualFixedModel
+      ? { status: "ready", model: actualFixedModel }
+      : !runs
+        ? { status: "empty" }
+        : snapshotStatus === "empty"
+          ? { status: "empty" }
+          : snapshotStatus === "error"
+            ? { status: "error" }
+            : { status: "loading" }
   const sessionModels = actualFixedModel
     ? [
         {
@@ -272,6 +345,8 @@ export function ChatScreen({
       store={store}
       models={sessionModels}
       locked={!empty}
+      fixedModel={fixedModelState}
+      onRetryFixedModel={runs ? retryFixedModel : undefined}
       className="mx-auto w-full"
     />
   )

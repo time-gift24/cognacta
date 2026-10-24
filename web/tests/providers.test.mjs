@@ -110,3 +110,19 @@ test('demo selection unwraps the actual model and fixes configuration identity w
   assert.equal(requests.length, 2, 'changed configuration fails before mock execution');
   gateway.abort(); assert.equal(stops, 1);
 });
+
+test('Provider validation points at the offending field', async t => {
+  const { ProviderValidationError, validateProviderInput } = await load(t);
+  const cases = [
+    [{ name: '', baseURL: 'https://example.test/v1', models: [] }, 'name'],
+    [{ name: '接入', baseURL: 'file:///tmp/model', models: [] }, 'baseURL'],
+    [{ name: '接入', baseURL: 'https://example.test/v1', models: ['same', 'same'] }, 'models'],
+    [{ name: '接入', baseURL: 'https://example.test/v1', models: [], apiKey: 'secret\nheader' }, 'apiKey'],
+  ];
+  for (const [input, field] of cases) {
+    assert.throws(
+      () => validateProviderInput(input),
+      error => error instanceof ProviderValidationError && error.field === field,
+    );
+  }
+});

@@ -6,9 +6,11 @@ import { Select } from "@/components/premium/select/select"
 import { useToast } from "@/components/ui/toast"
 import { useBackendData } from "@/components/workbench/use-backend-data"
 import {
+  ProviderValidationError,
   validateProviderInput,
   type ProviderCatalog,
   type ProviderEntry,
+  type ProviderField,
   type ProviderInput,
   type ProviderSource,
 } from "@/providers/source"
@@ -98,6 +100,9 @@ function ProviderManager({
   const id = useId()
   const [catalog, setCatalog] = useState(initial)
   const [draft, setDraft] = useState<Draft | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<
+    Partial<Record<ProviderField, string>>
+  >({})
   const [busy, setBusy] = useState(false)
   const [testModel, setTestModel] = useState("")
   const [testing, setTesting] = useState(false)
@@ -136,6 +141,7 @@ function ProviderManager({
   }
   function edit(entry?: ProviderEntry) {
     stopTest()
+    setFieldErrors({})
     setDraft(draftFor(entry))
     setTestModel("")
     toast.dismissKey("provider-error")
@@ -143,9 +149,33 @@ function ProviderManager({
   }
   function update(patch: Partial<Draft>) {
     stopTest()
+    setFieldErrors({})
     setDraft((value) => value && { ...value, ...patch })
     toast.dismissKey("provider-error")
     toast.dismissKey("provider-notice")
+  }
+  /** Move focus to the first field a rejected draft points at. */
+  function focusField(field: ProviderField) {
+    requestAnimationFrame(() => {
+      const target =
+        field === "name"
+          ? document.getElementById(`${id}-name`)
+          : field === "baseURL"
+            ? document.getElementById(`${id}-url`)
+            : field === "models"
+              ? (document.getElementById(`${id}-model-0`) ??
+                document.getElementById(`${id}-add-model`))
+              : draft?.keyMode === "replace"
+                ? document.getElementById(`${id}-key`)
+                : [...document.querySelectorAll<HTMLInputElement>(
+                    'input[type="radio"]'
+                  )].find(
+                    (input) =>
+                      input.value === "replace" &&
+                      input.name === `${id}-key-mode`
+                  )
+      target?.focus()
+    })
   }
   async function write(
     action: () => Promise<ProviderCatalog>,
@@ -161,6 +191,7 @@ function ProviderManager({
       const next = await action()
       if (!live.current) return
       setCatalog(next)
+      setFieldErrors({})
       success(next)
     } catch (cause) {
       if (live.current) showError(failure(cause, "Provider 操作失败，请重试。"))
@@ -253,7 +284,10 @@ function ProviderManager({
                     : {}),
               })
               if (draft.keyMode === "replace" && !draft.key.trim())
-                throw new Error("请输入新的 API Key，或选择清除。")
+                throw new ProviderValidationError(
+                  "apiKey",
+                  "请输入新的 API Key，或选择清除。"
+                )
               if (
                 catalog.providers.some(
                   (entry) =>
@@ -261,9 +295,15 @@ function ProviderManager({
                     entry.name !== draft.originalName
                 )
               )
-                throw new Error("Provider 名称已存在。")
+                throw new ProviderValidationError(
+                  "name",
+                  "Provider 名称已存在。"
+                )
             } catch (cause) {
-              showError(failure(cause, "配置无效。"))
+              if (cause instanceof ProviderValidationError) {
+                setFieldErrors({ [cause.field]: cause.message })
+                focusField(cause.field)
+              } else showError(failure(cause, "配置无效。"))
               return
             }
             void write(
@@ -297,6 +337,7 @@ function ProviderManager({
                 maxLength={64}
                 value={draft.name}
                 disabled={busy}
+                error={fieldErrors.name}
                 onChange={(name) => update({ name })}
               />
             </div>
@@ -311,6 +352,7 @@ function ProviderManager({
                 placeholder="https://gateway.example/v1"
                 value={draft.baseURL}
                 disabled={busy}
+                error={fieldErrors.baseURL}
                 onChange={(baseURL) => update({ baseURL })}
               />
             </div>
@@ -327,6 +369,7 @@ function ProviderManager({
                   maxLength={128}
                   value={model}
                   className="min-w-0 flex-1"
+                  error={index === 0 ? fieldErrors.models : undefined}
                   placeholder="上游实际 model 名称"
                   onChange={(value) =>
                     update({
@@ -355,11 +398,17 @@ function ProviderManager({
               type="button"
               variant="outline"
               size="sm"
+              id={`${id}-add-model`}
               disabled={draft.models.length >= 100}
               onClick={() => update({ models: [...draft.models, ""] })}
             >
               添加模型
             </Button>
+            {fieldErrors.models && !draft.models.length ? (
+              <p role="alert" className="text-xs text-destructive">
+                {fieldErrors.models}
+              </p>
+            ) : null}
           </fieldset>
           <fieldset disabled={busy} className="space-y-3">
             <legend className="mb-2 text-sm font-medium">
@@ -399,9 +448,14 @@ function ProviderManager({
                   type="password"
                   autoComplete="new-password"
                   value={draft.key}
+                  error={fieldErrors.apiKey}
                   onChange={(key) => update({ key })}
                 />
               </div>
+            ) : fieldErrors.apiKey ? (
+              <p role="alert" className="text-xs text-destructive">
+                {fieldErrors.apiKey}
+              </p>
             ) : null}
           </fieldset>
           <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border pt-4">

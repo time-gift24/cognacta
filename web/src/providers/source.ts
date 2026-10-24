@@ -64,6 +64,19 @@ export function providerModelLabel(id: string): string {
   return id
 }
 
+/** The field a rejected provider draft should point at. */
+export type ProviderField = "name" | "baseURL" | "models" | "apiKey"
+
+/** Boundary validation keeps the offending field so the form can explain it in place. */
+export class ProviderValidationError extends Error {
+  readonly field: ProviderField
+  constructor(field: ProviderField, message: string) {
+    super(message)
+    this.name = "ProviderValidationError"
+    this.field = field
+  }
+}
+
 /** Shared boundary validation; the backend validates again before persistence. */
 export function validateProviderInput(input: ProviderInput): ProviderInput {
   const controls = (value: string) =>
@@ -73,12 +86,18 @@ export function validateProviderInput(input: ProviderInput): ProviderInput {
     )
   const name = input.name.trim()
   if (!name || name.length > 64 || controls(input.name))
-    throw new Error("Provider 名称须为 1–64 个字符，不能包含控制字符。")
+    throw new ProviderValidationError(
+      "name",
+      "Provider 名称须为 1–64 个字符，不能包含控制字符。"
+    )
   let url: URL
   try {
     url = new URL(input.baseURL.trim())
   } catch {
-    throw new Error("请输入有效的 HTTP／HTTPS 接入地址。")
+    throw new ProviderValidationError(
+      "baseURL",
+      "请输入有效的 HTTP／HTTPS 接入地址。"
+    )
   }
   if (
     !["http:", "https:"].includes(url.protocol) ||
@@ -89,7 +108,8 @@ export function validateProviderInput(input: ProviderInput): ProviderInput {
     input.baseURL.length > 2048 ||
     controls(input.baseURL)
   )
-    throw new Error(
+    throw new ProviderValidationError(
+      "baseURL",
       "接入地址须为 HTTP／HTTPS，不能包含账号、密码、查询参数或片段。"
     )
   const models = input.models.map((model) => model.trim())
@@ -104,15 +124,21 @@ export function validateProviderInput(input: ProviderInput): ProviderInput {
         providerModelId({ provider: name, model }).length > 256
     )
   )
-    throw new Error("最多可配置 100 个模型，每个名称须为 1–128 个字符。")
+    throw new ProviderValidationError(
+      "models",
+      "最多可配置 100 个模型，每个名称须为 1–128 个字符。"
+    )
   if (new Set(models).size !== models.length)
-    throw new Error("同一 Provider 的模型名称不能重复。")
+    throw new ProviderValidationError(
+      "models",
+      "同一 Provider 的模型名称不能重复。"
+    )
   if (
     input.apiKey !== undefined &&
     input.apiKey !== null &&
     (new TextEncoder().encode(input.apiKey).length > 2560 ||
       controls(input.apiKey))
   )
-    throw new Error("API Key 格式无效。")
+    throw new ProviderValidationError("apiKey", "API Key 格式无效。")
   return { ...input, name, baseURL: url.href.replace(/\/$/, ""), models }
 }

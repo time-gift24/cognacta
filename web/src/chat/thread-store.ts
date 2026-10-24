@@ -13,6 +13,15 @@ import {
 
 export type ThreadSnapshot = { version: 1; state: ThreadViewState };
 
+/** 提交前的快照；仅在生成开始前失败时用于恢复可编辑原稿。 */
+type Submission = {
+  userId: string;
+  messageId: string;
+  text: string;
+  attachments: ChatInputAttachment[] | undefined;
+  model: string | undefined;
+};
+
 export interface ThreadDraftAttachment {
   id: string;
   name: string;
@@ -87,6 +96,13 @@ export class ThreadStoreImpl implements ThreadStore {
   getDraft = (): ThreadDraft => this.draft;
 
   updateDraft = (patch: Partial<ThreadDraft>): void => {
+    if (
+      (patch.text !== undefined || patch.attachments !== undefined) &&
+      this.state.submitError
+    ) {
+      this.state = { ...this.state, submitError: undefined };
+      this.emit();
+    }
     this.draft = {
       ...this.draft,
       ...patch,
@@ -115,7 +131,10 @@ export class ThreadStoreImpl implements ThreadStore {
   }
 
   snapshot(): ThreadSnapshot {
-    return { version: 1, state: structuredClone(this.state) };
+    const state = structuredClone(this.state);
+    // 提交错误是当前输入的一次性反馈，不应随会话快照恢复。
+    delete state.submitError;
+    return { version: 1, state };
   }
 
   restore(snapshot: ThreadSnapshot): boolean {
@@ -136,12 +155,33 @@ export class ThreadStoreImpl implements ThreadStore {
     if (!trimmed || this.streaming) return false;
 
     const files = attachments?.map((attachment) => ({ ...attachment }));
+    const issue = this.gateway.checkInput?.({
+      text: trimmed,
+      ...(files ? { attachments: files } : {}),
+    });
+    if (issue) {
+      this.state = {
+        ...this.state,
+        submitError: { kind: "invalid-request", message: issue },
+      };
+      this.emit();
+      return false;
+    }
+
     this.state = appendUserMessage(
       this.state,
       trimmed,
       files?.map(({ name, mediaType }) => ({ name, mediaType })),
     );
-    void this.consume(trimmed, files, model);
+    const userId = this.state.messages.at(-1)!.id;
+    const messageId = `m-${this.state.messages.length + 1}`;
+    void this.consume(trimmed, files, model, messageId, {
+      userId,
+      messageId,
+      text: trimmed,
+      attachments: files,
+      model,
+    });
     return true;
   };
 
@@ -191,6 +231,10 @@ export class ThreadStoreImpl implements ThreadStore {
       .join("");
     const replyId = this.state.messages[index].id;
     const input = this.requestInputs.get(replyId);
+    if (this.state.submitError) {
+      this.state = { ...this.state, submitError: undefined };
+      this.emit();
+    }
     void this.consume(
       text,
       input?.attachments ?? user.attachments,
@@ -204,6 +248,7 @@ export class ThreadStoreImpl implements ThreadStore {
     attachments: ChatInputAttachment[] | undefined,
     model: string | undefined,
     messageId = `m-${this.state.messages.length + 1}`,
+    submission?: Submission,
   ): Promise<void> {
     const active: { messageId: string; stopping?: boolean } = { messageId };
     const targetIndex = this.state.messages.findIndex((message) => message.id === messageId);
@@ -259,6 +304,10 @@ export class ThreadStoreImpl implements ThreadStore {
       for await (const event of this.gateway.stream(request)) {
         if (this.activeRequest !== active) return;
         if (active.stopping) continue;
+        if (submission && event.type === "failed" && event.stage === "submit") {
+          this.failSubmission(active, submission, event.error);
+          return;
+        }
         this.state = event.type === "failed" && event.error.kind === "aborted"
           ? markStopped(this.state, messageId)
           : foldChatEvent(this.state, event, messageId);
@@ -269,28 +318,24 @@ export class ThreadStoreImpl implements ThreadStore {
         if (terminal) break;
       }
       if (this.activeRequest !== active || active.stopping) return;
+      const error = {
+        kind: "truncated" as const,
+        message: "回复流提前结束，已保留已输出的内容。",
+      };
       this.state = foldChatEvent(
         this.state,
-        {
-          type: "failed",
-          error: {
-            kind: "truncated",
-            message: "回复流提前结束，已保留已输出的内容。",
-          },
-        },
+        { type: "failed", error },
         messageId,
       );
     } catch (cause) {
       if (this.activeRequest !== active || active.stopping) return;
+      const error = {
+        kind: "unknown" as const,
+        message: cause instanceof Error ? cause.message : String(cause),
+      };
       this.state = foldChatEvent(
         this.state,
-        {
-          type: "failed",
-          error: {
-            kind: "unknown",
-            message: cause instanceof Error ? cause.message : String(cause),
-          },
-        },
+        { type: "failed", error },
         messageId,
       );
     } finally {
@@ -299,6 +344,64 @@ export class ThreadStoreImpl implements ThreadStore {
         this.emit();
       }
     }
+  }
+
+  /**
+   * 生成开始前的失败不是回合：移除占位消息，恢复提交时的文字、附件和模型。
+   * 只补回当前草稿缺少的部分，不覆盖用户在这段时间里新输入的内容。
+   */
+  private failSubmission(
+    active: { messageId: string; stopping?: boolean },
+    submission: Submission,
+    error: NonNullable<ThreadViewState["error"]>,
+  ): void {
+    if (this.activeRequest !== active) return;
+    this.activeRequest = undefined;
+    this.requestInputs.delete(submission.messageId);
+    this.state = {
+      ...this.state,
+      status: "idle",
+      error: undefined,
+      submitError: error,
+      messages: this.state.messages.filter(
+        (message) =>
+          message.id !== submission.userId &&
+          message.id !== submission.messageId,
+      ),
+    };
+    const current = this.draft;
+    const key = (attachment: {
+      id?: string;
+      name: string;
+      file?: File;
+      url?: string;
+    }) =>
+      attachment.id ??
+      (attachment.file
+        ? `${attachment.file.name}:${attachment.file.size}:${attachment.file.lastModified}`
+        : attachment.url ?? attachment.name);
+    const currentKeys = new Set(current.attachments.map(key));
+    const restored = (submission.attachments ?? [])
+      .filter((attachment) => !currentKeys.has(key(attachment)))
+      .map((attachment) => ({
+        ...attachment,
+        id: attachment.id ?? key(attachment),
+      }));
+    const typed = current.text.trim();
+    const text =
+      !typed
+        ? submission.text
+        : typed === submission.text
+          ? current.text
+          : `${submission.text}\n\n${current.text}`;
+    this.draft = {
+      ...current,
+      text,
+      ...(current.model ? {} : submission.model ? { model: submission.model } : {}),
+      attachments: [...restored, ...current.attachments],
+    };
+    for (const listener of [...this.draftListeners]) listener();
+    this.emit();
   }
 
   private emit(): void {

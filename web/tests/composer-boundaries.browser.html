@@ -118,7 +118,7 @@
     key("Enter");
     assert(submitted === 0, "An editor disabled while focused must not submit");
   });
-  await run("IME composition cannot submit an unfinished draft", () => {
+  await run("IME composition cannot submit an unfinished draft", async () => {
     let submitted = 0;
     render(AgentChatComposer, { skills: [], onSubmit: () => { submitted += 1; } });
     editor().dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
@@ -126,8 +126,24 @@
     key("Enter", { isComposing: true });
     assert(submitted === 0, "IME confirmation must not submit");
     flushSync(() => editor().dispatchEvent(new CompositionEvent("compositionend", { bubbles: true })));
+    // Safari delivers the composition-closing keydown after compositionend.
+    key("Enter");
+    assert(submitted === 0, "Safari's composition-closing Enter must not submit");
+    await wait(20);
     key("Enter");
     assert(submitted === 1, "Ordinary Enter after composition must submit");
+    const legacy = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+    Object.defineProperty(legacy, "keyCode", { value: 229 });
+    flushSync(() => editor().dispatchEvent(legacy));
+    assert(submitted === 1, "Legacy keyCode 229 must not submit");
+  });
+  await run("Holding Enter submits once", () => {
+    let submitted = 0;
+    render(AgentChatComposer, { skills: [], defaultValue: "repeat", onSubmit: () => { submitted += 1; return false; } });
+    key("Enter");
+    key("Enter", { repeat: true });
+    key("Enter", { repeat: true });
+    assert(submitted === 1, "Repeated Enter keydown must not submit again");
   });
   await run("Rejected typing at maxLength preserves undo history", () => {
     const ref = React.createRef();

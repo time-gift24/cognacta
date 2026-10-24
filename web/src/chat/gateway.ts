@@ -1,8 +1,18 @@
-import type { ChatEvent, ChatRequest } from "./dto.ts";
+import type { ChatEvent, ChatInputAttachment, ChatRequest } from "./dto.ts";
+
+export interface ChatInputCheck {
+  text: string;
+  attachments?: ChatInputAttachment[];
+}
 
 export interface ChatGateway {
   /** Durable sessions append new turns; existing replies cannot be replaced in place. */
   readonly appendOnly?: boolean;
+  /**
+   * Cheap synchronous preflight. A non-null answer rejects the submission
+   * before a turn is created, so the caller keeps the editable draft.
+   */
+  checkInput?(input: ChatInputCheck): string | null;
   /** 流以 completed / failed 之一收尾。 */
   stream(request: ChatRequest): AsyncIterable<ChatEvent>;
   /** 仅用户显式停止时调用；返回或 resolve 表示已停止，拒绝则仍占用任务位，可重试。 */
