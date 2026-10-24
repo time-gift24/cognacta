@@ -20,20 +20,10 @@ import {
 } from "@hugeicons-pro/core-stroke-rounded"
 import { DocumentActions } from "@/components/markdown/document-actions"
 import {
-  MarkdownEditor,
-  type MarkdownEditorMode,
-} from "@/components/markdown/markdown-editor"
-import {
-  MarkdownOutline,
-  MarkdownReading,
-  useHeadingScroll,
-} from "@/components/markdown/markdown-reading"
-import {
-  findDocsHeading,
-  type DocsSection,
-} from "@/components/premium/docs-pages/docs-data"
+  MarkdownDocument,
+  type DocumentScrollRequest,
+} from "@/components/markdown/markdown-document"
 import { DocsMobileNav } from "@/components/premium/docs-pages/docs-mobile-nav"
-import { useScrollspy } from "@/components/premium/docs-pages/use-scrollspy"
 import { Button } from "@/components/motion/button"
 import { Input } from "@/components/motion/input"
 import {
@@ -65,7 +55,6 @@ import {
   type BranchedMenuChild,
   type BranchedMenuItem,
 } from "./branched-menu"
-import "@/components/premium/docs-pages/docs-article.css"
 
 function SourceView({ source, path }: { source: string; path: string }) {
   const lines = useHighlightedCode(source, path.split(".").at(-1) ?? "text")
@@ -620,8 +609,10 @@ export function SkillDocument({
   onDeleteEntry,
   onError,
 }: SkillDocumentProps) {
-  const [mode, setMode] = useState<MarkdownEditorMode>("source")
   const [navOpen, setNavOpen] = useState(false)
+  const [scrollRequest, setScrollRequest] =
+    useState<DocumentScrollRequest | null>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
   const addedFileFocus = useRef<string | null>(null)
   const mounted = useRef(false)
   useEffect(() => {
@@ -630,66 +621,9 @@ export function SkillDocument({
       mounted.current = false
     }
   }, [])
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const editorPreviewRef = useRef<HTMLDivElement>(null)
-  const [pendingScroll, setPendingScroll] = useState<{
-    path: string
-    hash: string
-  } | null>(null)
-  const [outline, setOutline] = useState<{
-    key: string
-    sections: DocsSection[]
-  }>({ key: "", sections: [] })
   const file = files.find((entry) => entry.path === path)
   const markdown = /\.mdx?$/i.test(path)
-  const updateSections = useCallback(
-    (sections: DocsSection[]) => setOutline({ key: path, sections }),
-    [path]
-  )
-  const outlineSections =
-    markdown &&
-    customPreview === undefined &&
-    (!editing || mode === "preview") &&
-    outline.key === path
-      ? outline.sections
-      : []
-  const activeSection = useScrollspy(
-    outlineSections.map((section) => section.id),
-    editing ? editorPreviewRef : scrollRef
-  )
-  const resolveScroll = useCallback(
-    () => editorPreviewRef.current ?? scrollRef.current,
-    []
-  )
-  const { scrollToY, scrollToHeading } = useHeadingScroll(
-    resolveScroll,
-    `${path}:${editing ? mode : "reading"}`
-  )
-  useEffect(() => {
-    const target = pendingScroll
-    if (!target || target.path !== path || loading) return
-    const request = requestAnimationFrame(() => {
-      if (target.hash) {
-        const node = findDocsHeading(resolveScroll(), target.hash)
-        if (!node) return
-        scrollToHeading(node)
-      } else {
-        scrollToY(0)
-      }
-      setPendingScroll(null)
-    })
-    return () => cancelAnimationFrame(request)
-  }, [
-    pendingScroll,
-    path,
-    source,
-    loading,
-    editing,
-    outline,
-    resolveScroll,
-    scrollToHeading,
-    scrollToY,
-  ])
+
   function followLink(event: MouseEvent<HTMLDivElement>) {
     const anchor = (event.target as Element).closest("a")
     if (!anchor) return
@@ -708,7 +642,7 @@ export function SkillDocument({
       return
     }
     onError("")
-    setPendingScroll(target)
+    setScrollRequest(target)
     onSelectFile(target.path)
   }
 
@@ -787,7 +721,7 @@ export function SkillDocument({
   }, [entries, files])
 
   const selectFromSidebar = (value: string) => {
-    setPendingScroll({ path: value, hash: "" })
+    setScrollRequest({ path: value, hash: "" })
     onSelectFile(value)
   }
   const selectFromDrawer = (value: string) => {
@@ -795,21 +729,26 @@ export function SkillDocument({
     setNavOpen(false)
   }
 
-  const preview = customPreview ?? (
-    <MarkdownReading
-      source={source}
-      linkBase={`https://skill.invalid/${path}`}
-      onSections={updateSections}
-      onLink={followLink}
-      empty={
-        <p className="py-12 text-center text-sm text-muted-foreground">
-          暂无正文
-        </p>
-      }
-    />
-  )
-
-  const wide = editing && mode !== "preview"
+  const documentEditing = editing && !readOnly && !!file && !loading
+  const documentPreview =
+    !file ? (
+      files.length === 0 ? (
+        <p className="text-sm text-muted-foreground">暂无文件</p>
+      ) : (
+        <p role="alert">文件不存在，请从左侧导航选择文件。</p>
+      )
+    ) : loading ? (
+      <p role="status">正在读取文件…</p>
+    ) : customPreview !== undefined ? (
+      customPreview
+    ) : !markdown ? (
+      <>
+        <h1 className="mb-6 text-2xl font-semibold tracking-tight">
+          {path.split("/").at(-1)}
+        </h1>
+        <SourceView source={source} path={path} />
+      </>
+    ) : undefined
   function unusedPath(folder: string, directory: boolean) {
     const prefix = folder ? `${folder}/` : ""
     const name = directory ? "未命名目录" : "未命名"
@@ -847,129 +786,81 @@ export function SkillDocument({
     ? (folder: string) => void createDirectory(folder)
     : undefined
 
+  const documentActions = active ? (
+    <DocumentActions
+      editing={editing}
+      busy={busy}
+      disabled={loading || !file}
+      dirty={dirty}
+      readOnly={readOnly}
+      saveLabel={saveLabel}
+      onEdit={onEdit}
+      onSave={onSave}
+      onUndo={onUndo}
+      onRestore={onRestore}
+    >
+      <Button
+        variant="ghost"
+        size="icon"
+        className="skill-files-trigger size-7 text-muted-foreground/70 hover:text-foreground"
+        aria-label="浏览技能文件"
+        title="浏览技能文件"
+        onClick={() => setNavOpen(true)}
+      >
+        <HugeiconsIcon icon={Files01Icon} size={16} aria-hidden="true" />
+      </Button>
+      {actions}
+    </DocumentActions>
+  ) : null
+
   return (
-    <div className="skill-docs" data-slot="skill-screen">
-      <div className="doc-action-surface m-2 flex min-h-0 flex-1 flex-col gap-2 sm:m-3">
-        {active ? (
-          <DocumentActions
-            editing={editing}
-            busy={busy}
-            disabled={loading || !file}
-            dirty={dirty}
-            readOnly={readOnly}
-            saveLabel={saveLabel}
-            onEdit={() => {
-              setMode("source")
-              onEdit()
-            }}
-            onSave={onSave}
-            onUndo={onUndo}
-            onRestore={onRestore}
-          >
-            <Button
-              variant="ghost"
-              size="icon"
-              className="skill-files-trigger size-7 text-muted-foreground/70 hover:text-foreground"
-              aria-label="浏览技能文件"
-              title="浏览技能文件"
-              onClick={() => setNavOpen(true)}
-            >
-              <HugeiconsIcon icon={Files01Icon} size={16} aria-hidden="true" />
-            </Button>
-            {actions}
-          </DocumentActions>
-        ) : null}
-        <div
-          data-slot="document-body"
-          className="flex min-h-0 flex-1 overflow-hidden rounded-xl border border-[color:var(--border-strong)]"
-        >
-          <aside className="skill-file-sidebar">
-            <div className="min-h-0 flex-1 overflow-y-auto px-3 pt-4 pb-4">
-              <SkillFileNav
-                items={menuItems}
-                folders={folders}
-                active={path}
-                busy={busy}
-                onPick={selectFromSidebar}
-                onCreateFile={fileCreation}
-                onCreateDirectory={directoryCreation}
-                onRenameEntry={onRenameEntry}
-                onDeleteEntry={onDeleteEntry}
-              />
-            </div>
-          </aside>
-          <div className="flex min-h-0 min-w-0 flex-1">
-            <span role="status" className="sr-only">
-              {message}
-            </span>
-            <div
-              ref={scrollRef}
-              className={cn(
-                "doc-reading-scroll skill-docs-scroll min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain",
-                editing && "overflow-hidden"
-              )}
-              tabIndex={0}
-              aria-label="文件内容"
-            >
-              <div
-                className={cn("doc-reading-layout", wide && "doc-reading-wide")}
-                style={
-                  editing ? { height: "100%", maxWidth: "none" } : undefined
-                }
-              >
-                <article
-                  className={cn(
-                    "doc-article min-w-0 pt-2!",
-                    editing && "flex h-full min-h-0 flex-col p-3!"
-                  )}
-                >
-                  {!file ? (
-                    files.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">暂无文件</p>
-                    ) : (
-                      <p role="alert">文件不存在，请从左侧导航选择文件。</p>
-                    )
-                  ) : loading ? (
-                    <p role="status">正在读取文件…</p>
-                  ) : editing && !readOnly ? (
-                    <MarkdownEditor
-                      key={path}
-                      value={source}
-                      ariaLabel={`编辑 ${path}`}
-                      autoFocus
-                      markdown={markdown}
-                      preview={preview}
-                      previewScrollRef={editorPreviewRef}
-                      onModeChange={setMode}
-                      onChange={onChange}
-                    />
-                  ) : customPreview !== undefined || markdown ? (
-                    preview
-                  ) : (
-                    <>
-                      <h1 className="mb-6 text-2xl font-semibold tracking-tight">
-                        {path.split("/").at(-1)}
-                      </h1>
-                      <SourceView source={source} path={path} />
-                    </>
-                  )}
-                </article>
-                {!wide && outlineSections.length > 0 ? (
-                  <MarkdownOutline
-                    key={path}
-                    sections={outlineSections}
-                    active={activeSection ?? ""}
-                    onSelect={(id) => {
-                      const node = findDocsHeading(resolveScroll(), id)
-                      if (node) scrollToHeading(node)
-                    }}
-                  />
-                ) : null}
-              </div>
-            </div>
+    <div className="skill-docs" data-slot="skill-screen" ref={rootRef}>
+      <span role="status" className="sr-only">
+        {message}
+      </span>
+      <MarkdownDocument
+        source={source}
+        path={path}
+        editing={documentEditing}
+        onChange={onChange}
+        preview={documentPreview}
+        empty={
+          <p className="py-12 text-center text-sm text-muted-foreground">
+            暂无正文
+          </p>
+        }
+        editorProps={{
+          ariaLabel: `编辑 ${path}`,
+          autoFocus: true,
+          markdown,
+        }}
+        link={{
+          base: `https://skill.invalid/${path}`,
+          onClick: followLink,
+        }}
+        scrollRequest={scrollRequest}
+        actions={documentActions}
+        sidebar={
+          <div className="min-h-0 flex-1 overflow-y-auto px-3 pt-4 pb-4">
+            <SkillFileNav
+              items={menuItems}
+              folders={folders}
+              active={path}
+              busy={busy}
+              onPick={selectFromSidebar}
+              onCreateFile={fileCreation}
+              onCreateDirectory={directoryCreation}
+              onRenameEntry={onRenameEntry}
+              onDeleteEntry={onDeleteEntry}
+            />
           </div>
-        </div>
-      </div>
+        }
+        contentLabel="文件内容"
+        classNames={{
+          sidebar: "skill-file-sidebar",
+          scroll: "skill-docs-scroll",
+        }}
+      />
       <DocsMobileNav
         open={navOpen}
         onOpenChange={setNavOpen}
@@ -979,7 +870,7 @@ export function SkillDocument({
           // Headless UI restores the previous focus when its closing trap unmounts.
           requestAnimationFrame(() => {
             const editor =
-              scrollRef.current?.querySelector<HTMLTextAreaElement>("textarea")
+              rootRef.current?.querySelector<HTMLTextAreaElement>("textarea")
             if (
               active &&
               target &&

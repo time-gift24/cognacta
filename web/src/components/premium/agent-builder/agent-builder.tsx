@@ -7,7 +7,6 @@ import {
   Settings02Icon,
 } from "@hugeicons-pro/core-stroke-rounded"
 import {
-  useCallback,
   useEffect,
   useId,
   useLayoutEffect,
@@ -15,27 +14,13 @@ import {
   useState,
 } from "react"
 import { createPortal } from "react-dom"
-import {
-  MarkdownEditor,
-  type MarkdownEditorMode,
-} from "@/components/markdown/markdown-editor"
-import {
-  MarkdownOutline,
-  MarkdownReading,
-  useHeadingScroll,
-} from "@/components/markdown/markdown-reading"
-import {
-  findDocsHeading,
-  type DocsSection,
-} from "@/components/premium/docs-pages/docs-data"
-import { useScrollspy } from "@/components/premium/docs-pages/use-scrollspy"
 import { Breadcrumbs } from "@/components/ui/breadcrumbs"
 import { useToast } from "@/components/ui/toast"
 import { Button } from "@/components/motion/button"
 import { DocumentActions } from "@/components/markdown/document-actions"
+import { MarkdownDocument } from "@/components/markdown/markdown-document"
 import { useSaveShortcut } from "@/hooks/use-save-shortcut"
 import { cn } from "@/lib/utils"
-import "@/components/premium/docs-pages/docs-article.css"
 import type {
   AgentConfiguration,
   AgentResource,
@@ -97,10 +82,6 @@ export function AgentBuilder({
       (initialEditing ||
         JSON.stringify(initialDraft) !== JSON.stringify(initialConfiguration))
   )
-  const [mode, setMode] = useState<MarkdownEditorMode>("source")
-  const [outline, setOutline] = useState<DocsSection[]>([])
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const editorPreviewRef = useRef<HTMLDivElement>(null)
   const settingsId = useId()
   const lock = useRef(false)
   const dirty = JSON.stringify(configuration) !== JSON.stringify(saved)
@@ -153,25 +134,6 @@ export function AgentBuilder({
       if (!saving) void save()
     },
   })
-
-  const updateSections = useCallback(
-    (sections: DocsSection[]) => setOutline(sections),
-    []
-  )
-  const outlineSections = !editing || mode === "preview" ? outline : []
-  const activeSection = useScrollspy(
-    outlineSections.map((section) => section.id),
-    editing ? editorPreviewRef : scrollRef
-  )
-  const resolveScroll = useCallback(
-    () => editorPreviewRef.current ?? scrollRef.current,
-    []
-  )
-  const { scrollToHeading } = useHeadingScroll(
-    resolveScroll,
-    editing ? mode : "reading"
-  )
-  const wide = editing && mode !== "preview"
 
   function change(next: AgentConfiguration) {
     setConfiguration(next)
@@ -269,17 +231,51 @@ export function AgentBuilder({
     </div>
   )
 
-  const preview = (
-    <MarkdownReading
-      source={configuration.instructions}
-      onSections={updateSections}
-      empty={
-        <p className="py-12 text-center text-sm text-muted-foreground">
-          暂无系统提示词。
-        </p>
-      }
-    />
-  )
+  const actions = active ? (
+    <DocumentActions
+      readOnly={readOnly}
+      debugLabel={debugLabel}
+      editing={editing}
+      busy={saving}
+      dirty={dirty}
+      onEdit={() => {
+        setEditing(true)
+      }}
+      onSave={() => void save()}
+      onUndo={() => {
+        change(saved)
+        setEditing(false)
+      }}
+      onDebug={onDebug}
+    >
+      {onCopy ? (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-7 text-muted-foreground/70 hover:text-foreground"
+          aria-label="复制为本地"
+          title="复制为本地 Agent"
+          disabled={copyBusy}
+          aria-busy={copyBusy}
+          onClick={onCopy}
+        >
+          <HugeiconsIcon icon={Copy01Icon} size={16} aria-hidden="true" />
+        </Button>
+      ) : null}
+      <Button
+        size="icon"
+        variant="ghost"
+        aria-label="Agent 配置"
+        title="Agent 配置"
+        aria-controls={settingsId}
+        aria-expanded={settingsOpen}
+        onClick={() => setSettingsOpen((open) => !open)}
+        className="size-7 text-muted-foreground/70 hover:text-foreground @min-[480px]/agent:hidden"
+      >
+        <HugeiconsIcon icon={Settings02Icon} size={16} aria-hidden="true" />
+      </Button>
+    </DocumentActions>
+  ) : null
 
   return (
     <div
@@ -297,69 +293,15 @@ export function AgentBuilder({
             {toolbar}
           </div>
         ))}
-      <div className="doc-action-surface m-2 flex min-h-0 flex-1 flex-col gap-2 sm:m-3">
-        {active ? (
-          <DocumentActions
-            readOnly={readOnly}
-            debugLabel={debugLabel}
-            editing={editing}
-            busy={saving}
-            dirty={dirty}
-            onEdit={() => {
-              setEditing(true)
-              setMode("source")
-            }}
-            onSave={() => void save()}
-            onUndo={() => {
-              change(saved)
-              setEditing(false)
-            }}
-            onDebug={onDebug}
-          >
-            {onCopy ? (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-7 text-muted-foreground/70 hover:text-foreground"
-                aria-label="复制为本地"
-                title="复制为本地 Agent"
-                disabled={copyBusy}
-                aria-busy={copyBusy}
-                onClick={onCopy}
-              >
-                <HugeiconsIcon icon={Copy01Icon} size={16} aria-hidden="true" />
-              </Button>
-            ) : null}
-            <Button
-              size="icon"
-              variant="ghost"
-              aria-label="Agent 配置"
-              title="Agent 配置"
-              aria-controls={settingsId}
-              aria-expanded={settingsOpen}
-              onClick={() => setSettingsOpen((open) => !open)}
-              className="size-7 text-muted-foreground/70 hover:text-foreground @min-[480px]/agent:hidden"
-            >
-              <HugeiconsIcon
-                icon={Settings02Icon}
-                size={16}
-                aria-hidden="true"
-              />
-            </Button>
-          </DocumentActions>
-        ) : null}
-        <div
-          data-slot="document-body"
-          className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-[color:var(--border-strong)] @min-[480px]/agent:flex-row"
-        >
-          <aside
-            id={settingsId}
-            aria-label="Agent 配置"
-            className={cn(
-              "max-h-[48%] min-h-0 shrink-0 overflow-y-auto border-b border-border bg-muted/30 px-4 py-4 @min-[480px]/agent:max-h-none @min-[480px]/agent:w-1/3 @min-[480px]/agent:min-w-64 @min-[480px]/agent:border-r @min-[480px]/agent:border-b-0 @min-[760px]/agent:max-w-[26rem] @min-[760px]/agent:px-6 @min-[760px]/agent:py-6",
-              settingsOpen ? "block" : "hidden @min-[480px]/agent:block"
-            )}
-          >
+      <MarkdownDocument
+        source={configuration.instructions}
+        editing={editing}
+        onChange={(instructions) =>
+          change({ ...configuration, instructions })
+        }
+        actions={actions}
+        sidebar={
+          <>
             <AgentConfigurationPanel
               disabled={false}
               readOnly={readOnly || !editing}
@@ -371,64 +313,32 @@ export function AgentBuilder({
               value={configuration}
             />
             {resourceManager}
-          </aside>
-          <div className="flex min-h-0 min-w-0 flex-1">
-            <div
-              ref={scrollRef}
-              className={cn(
-                "doc-reading-scroll min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain",
-                editing && "overflow-hidden"
-              )}
-              tabIndex={0}
-              aria-label="系统提示词"
-            >
-              <div
-                className={cn("doc-reading-layout", wide && "doc-reading-wide")}
-                style={
-                  editing ? { height: "100%", maxWidth: "none" } : undefined
-                }
-              >
-                <article
-                  className={cn(
-                    "doc-article min-w-0 pt-2!",
-                    editing && "flex h-full min-h-0 flex-col p-3!"
-                  )}
-                >
-                  {editing ? (
-                    <MarkdownEditor
-                      title="系统提示词"
-                      ariaLabel="系统提示词"
-                      className="min-h-0 min-w-0 flex-1"
-                      value={configuration.instructions}
-                      maxLength={12000}
-                      placeholder="描述这个 Agent 的身份、职责、工作方式和边界。"
-                      autoFocus
-                      preview={preview}
-                      previewScrollRef={editorPreviewRef}
-                      onModeChange={setMode}
-                      onChange={(instructions) =>
-                        change({ ...configuration, instructions })
-                      }
-                    />
-                  ) : (
-                    preview
-                  )}
-                </article>
-                {!wide && outlineSections.length > 0 ? (
-                  <MarkdownOutline
-                    sections={outlineSections}
-                    active={activeSection ?? ""}
-                    onSelect={(id) => {
-                      const node = findDocsHeading(resolveScroll(), id)
-                      if (node) scrollToHeading(node)
-                    }}
-                  />
-                ) : null}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+          </>
+        }
+        sidebarId={settingsId}
+        sidebarLabel="Agent 配置"
+        contentLabel="系统提示词"
+        empty={
+          <p className="py-12 text-center text-sm text-muted-foreground">
+            暂无系统提示词。
+          </p>
+        }
+        editorProps={{
+          title: "系统提示词",
+          ariaLabel: "系统提示词",
+          className: "min-h-0 min-w-0 flex-1",
+          maxLength: 12000,
+          placeholder: "描述这个 Agent 的身份、职责、工作方式和边界。",
+          autoFocus: true,
+        }}
+        classNames={{
+          body: "flex-col @min-[480px]/agent:flex-row",
+          sidebar: cn(
+            "max-h-[48%] min-h-0 shrink-0 overflow-y-auto border-b border-border bg-muted/30 px-4 py-4 @min-[480px]/agent:max-h-none @min-[480px]/agent:w-1/3 @min-[480px]/agent:min-w-64 @min-[480px]/agent:border-r @min-[480px]/agent:border-b-0 @min-[760px]/agent:max-w-[26rem] @min-[760px]/agent:px-6 @min-[760px]/agent:py-6",
+            settingsOpen ? "block" : "hidden @min-[480px]/agent:block"
+          ),
+        }}
+      />
     </div>
   )
 }
