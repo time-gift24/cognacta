@@ -1,0 +1,5 @@
+{
+  "root": true,
+  "formatter": { "indentStyle": "space", "indentWidth": 2 },
+  "javascript": { "formatter": { "quoteStyle": "double" } }
+}
