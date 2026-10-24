@@ -31,7 +31,7 @@ export function EmptyWorkspace({
         transition={{ duration: 0.55, ease: EASE_OUT }}
         className="text-center"
       >
-        <span className="mx-auto grid size-10 place-items-center rounded-xl border border-border-strong bg-surface-raised text-primary">
+        <span className="mx-auto grid size-10 place-items-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
           <BrandMark className="size-4.5" />
         </span>
         <h1 className="mt-4 text-balance font-medium text-[clamp(1.65rem,4vw,2.15rem)] leading-tight tracking-[-0.04em]">

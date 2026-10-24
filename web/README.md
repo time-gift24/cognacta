@@ -1,8 +1,9 @@
 # Cognacta — Agent workspace
 
-Cognacta's responsive agent workspace, built with beUI components, with
-light/dark/system themes, project management, searchable conversations, archives,
-a knowledge base, integrations previews, and the beUI Credits composer.
+Cognacta's responsive agent workspace, built with beUI components, with a
+Cognacta Canopy color system, light/dark/system themes, a frosted composer and
+overlay layers, project management, searchable conversations, archives, a
+knowledge base, integrations previews, and the beUI Credits composer.
 
 ## Develop
 

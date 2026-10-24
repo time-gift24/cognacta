@@ -2,39 +2,58 @@
 
 :root {
   color-scheme: dark;
-  --background: #1a1a1a;
-  --foreground: #f4f4f4;
-  --surface: #1a1a1a;
-  --surface-raised: #242424;
-  --surface-active: #2c2c2c;
-  --muted: #2c2c2c;
-  --muted-foreground: #a6a6a6;
-  --faint: #858585;
+  --background: #131513;
+  --foreground: #eff3f1;
+  --surface: #1a1d1a;
+  --surface-raised: #202420;
+  --surface-active: #272d27;
+  --muted: #1a1d1a;
+  --muted-foreground: #9aa39c;
+  --faint: #8a918d;
   --border: rgb(255 255 255 / 0.07);
-  --border-strong: rgb(255 255 255 / 0.12);
-  --primary: #1688ff;
-  --primary-strong: #0b72e0;
-  --primary-foreground: #ffffff;
-  --danger: #ff7066;
-  --danger-strong: #c4352c;
+  --border-strong: rgb(255 255 255 / 0.13);
+  --primary: #3ace93;
+  --primary-strong: #3ace93;
+  --primary-foreground: #011c11;
+  --accent: var(--primary);
+  --accent-foreground: var(--primary-foreground);
+  --danger: #ee343b;
+  --danger-strong: #9e2026;
+  --danger-foreground: #ffffff;
+  --card: var(--surface-raised);
+  --card-foreground: var(--foreground);
+  --glass-bg: oklch(20% 0.01 160 / 0.55);
+  --glass-border: rgb(255 255 255 / 0.08);
+  --glass-highlight: rgb(255 255 255 / 0.07);
+  --glass-shadow: rgb(0 0 0 / 0.5);
+  --ambient-a: oklch(76% 0.15 162 / 0.1);
+  --ambient-b: oklch(76% 0.15 162 / 0.05);
 }
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --background: #ffffff;
-  --foreground: #202020;
-  --surface: #ffffff;
-  --surface-raised: #f6f6f6;
-  --surface-active: #ebebeb;
-  --muted: #ebebeb;
-  --muted-foreground: #646464;
-  --faint: #707070;
-  --border: rgb(0 0 0 / 0.09);
-  --border-strong: rgb(0 0 0 / 0.16);
-  --primary: #0874e3;
-  --primary-strong: #0874e3;
-  --danger: #c4352c;
-  --danger-strong: #c4352c;
+  --background: #fcfcfc;
+  --foreground: #0e1310;
+  --surface: #f4f6f4;
+  --surface-raised: #eef1ef;
+  --surface-active: #e7ebe9;
+  --muted: #f1f4f2;
+  --muted-foreground: #5d6561;
+  --faint: #636d67;
+  --border: rgb(18 30 24 / 0.08);
+  --border-strong: rgb(18 30 24 / 0.14);
+  --primary: #007d53;
+  --primary-strong: #007d53;
+  --primary-foreground: #ffffff;
+  --danger: #a92227;
+  --danger-strong: #9e2026;
+  --danger-foreground: #ffffff;
+  --glass-bg: rgb(255 255 255 / 0.72);
+  --glass-border: rgb(18 30 24 / 0.12);
+  --glass-highlight: rgb(255 255 255 / 0.85);
+  --glass-shadow: rgb(18 30 24 / 0.18);
+  --ambient-a: oklch(52% 0.12 162 / 0.09);
+  --ambient-b: oklch(52% 0.12 162 / 0.05);
 }
 
 @theme inline {
@@ -50,12 +69,17 @@
   --color-primary: var(--primary);
   --color-primary-strong: var(--primary-strong);
   --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
   --color-muted-foreground: var(--muted-foreground);
   --color-popover: var(--surface-raised);
   --color-popover-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
   --color-ring: var(--primary);
   --color-danger: var(--danger);
   --color-danger-strong: var(--danger-strong);
+  --color-danger-foreground: var(--danger-foreground);
   --font-sans: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
@@ -77,6 +101,8 @@
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+    scrollbar-color: color-mix(in oklab, var(--foreground) 16%, transparent)
+      transparent;
   }
 
   button,
@@ -91,7 +117,7 @@
   }
 
   ::selection {
-    background: color-mix(in srgb, var(--primary) 32%, transparent);
+    background: color-mix(in oklab, var(--primary) 28%, transparent);
     color: var(--foreground);
   }
 }
@@ -103,6 +129,55 @@
 
   .scrollbar-none::-webkit-scrollbar {
     display: none;
+  }
+
+  .workspace-surface {
+    background-color: var(--background);
+    background-image:
+      radial-gradient(58% 44% at 84% -10%, var(--ambient-a), transparent 72%),
+      radial-gradient(46% 50% at -8% 108%, var(--ambient-b), transparent 72%);
+    background-repeat: no-repeat;
+  }
+
+  .glass-panel {
+    border: 1px solid var(--glass-border);
+    background: var(--glass-bg);
+    -webkit-backdrop-filter: blur(22px) saturate(1.35);
+    backdrop-filter: blur(22px) saturate(1.35);
+    box-shadow:
+      inset 0 1px 0 var(--glass-highlight),
+      0 24px 64px -36px var(--glass-shadow);
+  }
+
+  .composer-field {
+    background: color-mix(in oklab, var(--background) 84%, transparent);
+  }
+
+  .glass-chip {
+    border: 1px solid var(--glass-border);
+    background: var(--glass-bg);
+    -webkit-backdrop-filter: blur(18px) saturate(1.25);
+    backdrop-filter: blur(18px) saturate(1.25);
+    box-shadow: inset 0 1px 0 var(--glass-highlight);
+  }
+}
+
+@supports not (
+  (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))
+) {
+  .glass-panel,
+  .glass-chip {
+    background: var(--surface);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .glass-panel,
+  .glass-chip {
+    background: var(--surface);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    box-shadow: none;
   }
 }
 

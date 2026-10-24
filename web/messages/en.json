@@ -1,6 +1,6 @@
 {
   "Meta": {
-    "title": "Cognacta — Agent workspace",
+    "title": "Cognacta · Agent workspace",
     "description": "Cognacta is an enterprise agent workspace for building, running, and observing AI agents."
   },
   "Nav": {
@@ -247,7 +247,9 @@
     "connectedAppsHint": "Manage the tools you use with Cognacta.",
     "dataLocal": "Your data stays local",
     "dataLocalHint": "Chats, connections, and preferences are stored in this browser.",
-    "footnote": "Template preview. Preferences are saved locally and do not change the simulated agent responses."
+    "footnote": "Template preview. Preferences are saved locally and do not change the simulated agent responses.",
+    "switchToLight": "Switch to light",
+    "switchToDark": "Switch to dark"
   },
   "Help": {
     "title": "Workspace guide",

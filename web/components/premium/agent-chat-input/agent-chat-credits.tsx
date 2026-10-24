@@ -206,7 +206,7 @@ export function AgentChatCredits({
   return (
     <div
       className={cn(
-        "relative w-full max-w-3xl bg-muted p-[3px] transition-[border-radius] duration-200",
+        "glass-panel relative w-full max-w-3xl p-[3px] transition-[border-radius] duration-200",
         skillCommand.visible
           ? "rounded-b-[1.25rem] rounded-t-none"
           : "rounded-[1.25rem]",
@@ -227,7 +227,7 @@ export function AgentChatCredits({
         onUpgrade={onUpgradeClick}
       />
 
-      <div className="rounded-[1.1rem] bg-background px-2 pt-1.5 pb-2">
+      <div className="composer-field rounded-[1.1rem] px-2 pt-1.5 pb-2">
         <AgentChatComposer
           ref={composerRef}
           skills={skills}

@@ -19,6 +19,7 @@ import {
 } from "@/components/icons";
 import { EASE_OUT, SPRING_SWAP, SPRING_PANEL } from "@/lib/ease";
 import { ProfileMenu } from "../profile-menu";
+import { ThemeQuickToggle } from "../theme-quick-toggle";
 import { modeDefs } from "./config";
 import { ProjectGroup } from "./project-group";
 import type { Mode } from "./types";
@@ -66,6 +67,7 @@ export function SidebarContent({
         >
           <Search className="size-[18px]" />
         </button>
+        <ThemeQuickToggle />
         <button
           type="button"
           aria-label={t("collapseSidebar")}
@@ -250,7 +252,7 @@ export function MobileSidebar({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="absolute inset-0 bg-black/65"
+            className="absolute inset-0 bg-black/50"
           />
           <DialogPanel
             className="relative h-full w-[min(85vw,17rem)]"
@@ -262,7 +264,7 @@ export function MobileSidebar({
               animate={{ x: 0 }}
               exit={reduce ? { opacity: 0 } : { x: -280 }}
               transition={SPRING_PANEL}
-              className="relative h-full w-[min(85vw,17rem)] border-border border-r bg-surface"
+              className="relative h-full w-[min(85vw,17rem)] border-border border-r bg-surface/80 backdrop-blur-2xl"
             >
               <SidebarContent
                 mode={mode}

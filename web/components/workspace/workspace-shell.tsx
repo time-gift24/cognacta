@@ -39,7 +39,7 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
     },
   };
   return (
-    <main className="flex h-dvh overflow-hidden bg-background text-foreground">
+    <main className="workspace-surface flex h-dvh overflow-hidden text-foreground">
       <motion.aside
         initial={false}
         animate={{ width: sidebarOpen ? 248 : 0 }}
@@ -60,13 +60,13 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
           />
         </motion.div>
       </motion.aside>
-      <section className="relative flex min-w-0 flex-1 flex-col bg-background">
+      <section className="relative flex min-w-0 flex-1 flex-col bg-transparent">
         <div className="absolute top-3 left-3 z-20 flex gap-1">
           <button
             type="button"
             aria-label={t("openNavigation")}
             onClick={() => setMobileSidebarOpen(true)}
-            className="grid size-10 place-items-center rounded-lg bg-background text-muted-foreground hover:bg-surface-active focus-visible:outline-2 focus-visible:outline-primary lg:hidden"
+            className="glass-chip grid size-10 place-items-center rounded-lg text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary lg:hidden"
           >
             <Menu className="size-5" />
           </button>
@@ -75,7 +75,7 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
               type="button"
               aria-label={t("expandSidebar")}
               onClick={() => setSidebarOpen(true)}
-              className="hidden size-10 place-items-center rounded-lg bg-background text-muted-foreground hover:bg-surface-active focus-visible:outline-2 focus-visible:outline-primary lg:grid"
+              className="glass-chip hidden size-10 place-items-center rounded-lg text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary lg:grid"
             >
               <PanelLeft className="size-[18px]" />
             </button>

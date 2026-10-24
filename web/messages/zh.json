@@ -1,6 +1,6 @@
 {
   "Meta": {
-    "title": "Cognacta — Agent 工作台",
+    "title": "Cognacta · Agent 工作台",
     "description": "Cognacta 是企业级 Agent 工作台，用于构建、运行与观察 AI Agent。"
   },
   "Nav": {
@@ -247,7 +247,9 @@
     "connectedAppsHint": "管理你与 Cognacta 一起使用的工具。",
     "dataLocal": "数据留在本地",
     "dataLocalHint": "对话、连接和偏好都保存在当前浏览器中。",
-    "footnote": "模板预览。偏好只保存在本地，不会改变模拟的 agent 回复。"
+    "footnote": "模板预览。偏好只保存在本地，不会改变模拟的 agent 回复。",
+    "switchToLight": "切换到浅色",
+    "switchToDark": "切换到深色"
   },
   "Help": {
     "title": "工作区指南",

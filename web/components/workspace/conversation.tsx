@@ -115,7 +115,7 @@ export function Conversation({
           </AnimatePresence>
         </MessageGroup>
       </MessageScroller>
-      <div className="relative z-10 shrink-0 bg-background px-4 pt-3 pb-4 sm:px-6">
+      <div className="relative z-10 shrink-0 border-border/60 border-t bg-background/35 px-4 pt-3 pb-4 sm:px-6">
         <Composer compact thinking={thinking} {...composerProps} />
       </div>
     </div>

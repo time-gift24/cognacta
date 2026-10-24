@@ -223,7 +223,7 @@ export function CommandPalette({
               transition={{ duration: 0.18, ease: EASE_OUT }}
               {...gate}
               onClick={() => setOpen(false)}
-              className="pointer-events-auto fixed inset-0 z-[100] bg-background/5"
+              className="pointer-events-auto fixed inset-0 z-[100] bg-black/25"
             />
           )}
         </PresenceGate>
@@ -257,7 +257,7 @@ export function CommandPalette({
                 transition={reduce ? { duration: 0.1 } : PANEL_SPRING}
                 {...gate}
                 onKeyDown={onKeyDown}
-                className="pointer-events-auto w-full max-w-xl overflow-hidden rounded-2xl border border-border bg-background will-change-transform"
+                className="glass-panel pointer-events-auto w-full max-w-xl overflow-hidden rounded-2xl will-change-transform"
               >
                 <div className="flex items-center gap-3 border-b border-border px-4">
                   <Search className="h-4 w-4 text-muted-foreground" />
