@@ -23,7 +23,7 @@ export function EmptyWorkspace({
   return (
     <div
       id="workspace"
-      className="mx-auto flex min-h-full w-full max-w-[44rem] flex-col px-4 pt-[clamp(4rem,11vh,7.5rem)] pb-6 sm:px-6"
+      className="mx-auto flex min-h-full w-full max-w-[44rem] flex-col px-4 pt-[clamp(2.75rem,7vh,4.75rem)] pb-4 sm:px-6"
     >
       <motion.div
         initial={reduce ? false : { opacity: 0, y: 10 }}
@@ -43,7 +43,7 @@ export function EmptyWorkspace({
         initial={reduce ? false : { opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.08, duration: 0.6, ease: EASE_OUT }}
-        className="mt-7"
+        className="mt-5"
       >
         <Composer {...composerProps} />
       </motion.div>
@@ -58,7 +58,7 @@ export function EmptyWorkspace({
           },
         }}
         aria-label={t("projectSuggestions")}
-        className="mt-4 flex flex-wrap justify-center gap-2"
+        className="mt-3 flex flex-wrap justify-center gap-1.5"
       >
         {starters.map((starter) => (
           <motion.button
@@ -70,7 +70,7 @@ export function EmptyWorkspace({
               visible: { opacity: 1, y: 0 },
             }}
             transition={{ duration: 0.45, ease: EASE_OUT }}
-            className="group inline-flex min-h-10 items-center gap-2 rounded-full border border-border bg-transparent px-3.5 py-2 text-[13px] text-muted-foreground transition-colors hover:border-border-strong hover:bg-surface-raised hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary"
+            className="group inline-flex min-h-10 items-center gap-2 rounded-full border border-border bg-transparent px-3.5 py-2 text-[12px] text-muted-foreground transition-colors hover:border-border-strong hover:bg-surface-raised hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary"
           >
             <starter.icon className="size-4 text-muted-foreground transition-colors group-hover:text-primary" />
             <span>{starter.title}</span>

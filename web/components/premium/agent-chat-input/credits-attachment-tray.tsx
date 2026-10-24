@@ -66,7 +66,7 @@ export function CreditsAttachmentTray({
                       <FileText className="size-3.5" />
                     </span>
                   )}
-                  <span className="max-w-24 truncate text-foreground text-[11px]">
+                  <span className="max-w-24 truncate text-foreground text-[10px]">
                     {attachment.name}
                   </span>
                   <motion.button

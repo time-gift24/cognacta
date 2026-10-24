@@ -30,7 +30,7 @@ export function IntegrationDetails({
       open={open}
       onOpenChange={onOpenChange}
       backdropClassName="bg-black/40 backdrop-blur-none"
-      panelClassName="relative max-w-md rounded-2xl border border-border bg-background p-6"
+      panelClassName="relative max-w-md rounded-2xl border border-border bg-background p-5"
     >
       <Button
         type="button"
@@ -56,7 +56,7 @@ export function IntegrationDetails({
       <AnimatedModalDescription className="mt-2 text-sm leading-6 text-muted-foreground">
         {t(`items.${integration.id}`)}
       </AnimatedModalDescription>
-      <div className="mt-5 rounded-xl border border-border p-4 text-sm">
+      <div className="mt-4 rounded-xl border border-border p-4 text-sm">
         <p className="font-medium">
           {connected ? t("detailConnectedTitle") : t("detailTryTitle")}
         </p>
@@ -64,7 +64,7 @@ export function IntegrationDetails({
           {connected ? t("detailConnectedHint") : t("detailTryHint")}
         </p>
       </div>
-      <div className="mt-6 flex justify-end gap-2">
+      <div className="mt-4 flex justify-end gap-2">
         <Button
           type="button"
           variant="ghost"

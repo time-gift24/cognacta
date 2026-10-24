@@ -77,7 +77,7 @@ export function WorkspaceSettings() {
     preferences.instructions !== saved.instructions;
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-5 pt-20 pb-10 sm:px-8 lg:pt-12">
+    <div className="mx-auto w-full max-w-3xl px-4 pt-14 pb-8 sm:px-6 lg:pt-9">
       <header>
         <p className="mb-2 text-xs text-muted-foreground">
           {t("breadcrumb")}
@@ -86,11 +86,11 @@ export function WorkspaceSettings() {
         <p className="mt-2 text-sm text-muted-foreground">{t("subtitle")}</p>
       </header>
 
-      <section aria-labelledby="account-heading" className="mt-8">
+      <section aria-labelledby="account-heading" className="mt-6">
         <h2 id="account-heading" className="mb-3 text-sm font-medium">
           {t("account")}
         </h2>
-        <div className="flex items-center gap-3 rounded-2xl border border-border p-4">
+        <div className="flex items-center gap-3 rounded-2xl border border-border p-3.5">
           <span className="grid size-11 shrink-0 place-items-center rounded-full bg-surface-active text-sm font-medium">
             C
           </span>
@@ -106,12 +106,12 @@ export function WorkspaceSettings() {
         </div>
       </section>
 
-      <section aria-labelledby="appearance-heading" className="mt-7">
+      <section aria-labelledby="appearance-heading" className="mt-5">
         <h2 id="appearance-heading" className="mb-3 text-sm font-medium">
           {t("appearance")}
         </h2>
         <div className="overflow-hidden rounded-2xl border border-border">
-          <div className="flex flex-wrap items-center justify-between gap-4 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 p-3.5">
             <div>
               <h3 className="text-sm">{t("theme")}</h3>
               <p className="mt-1 text-xs text-muted-foreground">
@@ -178,12 +178,12 @@ export function WorkspaceSettings() {
           }
         }}
       >
-        <section aria-labelledby="preferences-heading" className="mt-7">
+        <section aria-labelledby="preferences-heading" className="mt-5">
           <h2 id="preferences-heading" className="mb-3 text-sm font-medium">
             {t("personalization")}
           </h2>
           <div className="overflow-hidden rounded-2xl border border-border">
-            <div className="flex flex-wrap items-center justify-between gap-4 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 p-3.5">
               <div>
                 <h3 className="text-sm">{t("responseStyle")}</h3>
                 <p className="mt-1 text-xs text-muted-foreground">
@@ -265,14 +265,14 @@ export function WorkspaceSettings() {
               setPreferences(saved);
               setNotice("");
             }}
-            className={`h-11 ${focus}`}
+            className={`h-10 ${focus}`}
           >
             {t("discard")}
           </Button>
           <Button
             type="submit"
             disabled={!ready || !dirty}
-            className={`h-11 ${focus}`}
+            className={`h-10 ${focus}`}
           >
             {t("save")}
           </Button>
@@ -282,14 +282,14 @@ export function WorkspaceSettings() {
         </p>
       </form>
 
-      <section aria-labelledby="workspace-heading" className="mt-7">
+      <section aria-labelledby="workspace-heading" className="mt-5">
         <h2 id="workspace-heading" className="mb-3 text-sm font-medium">
           {t("workspace")}
         </h2>
         <div className="divide-y divide-border rounded-2xl border border-border">
           <Link
             href="/integrations"
-            className={`flex items-center gap-3 rounded-t-2xl p-4 hover:bg-surface-raised ${focus}`}
+            className={`flex items-center gap-3 rounded-t-2xl p-3.5 hover:bg-surface-raised ${focus}`}
           >
             <LayoutGrid className="size-5 text-muted-foreground" />
             <div className="flex-1">
@@ -300,7 +300,7 @@ export function WorkspaceSettings() {
             </div>
             <ChevronRight className="size-4 text-muted-foreground" />
           </Link>
-          <div className="flex items-center gap-3 p-4">
+          <div className="flex items-center gap-3 p-3.5">
             <UserCircle className="size-5 text-muted-foreground" />
             <div className="flex-1">
               <p className="text-sm">{t("dataLocal")}</p>
@@ -311,7 +311,7 @@ export function WorkspaceSettings() {
           </div>
         </div>
       </section>
-      <p className="mt-6 text-xs leading-5 text-muted-foreground">
+      <p className="mt-4 text-xs leading-5 text-muted-foreground">
         {t("footnote")}
       </p>
     </div>

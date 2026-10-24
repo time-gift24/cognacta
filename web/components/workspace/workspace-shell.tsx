@@ -77,7 +77,7 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
               onClick={() => setSidebarOpen(true)}
               className="glass-chip hidden size-10 place-items-center rounded-lg text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary lg:grid"
             >
-              <PanelLeft className="size-[18px]" />
+              <PanelLeft className="size-[16px]" />
             </button>
           ) : null}
         </div>

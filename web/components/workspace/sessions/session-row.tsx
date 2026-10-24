@@ -17,7 +17,7 @@ export function SessionRow({
   return (
     <div
       className={cn(
-        "group/recent relative flex h-8 w-full items-center rounded-md text-[13px] transition-colors [@media(pointer:coarse)]:h-10 hover:bg-surface-active focus-within:bg-surface-active",
+        "group/recent relative flex h-8 w-full items-center rounded-md text-[12px] transition-colors [@media(pointer:coarse)]:h-10 hover:bg-surface-active focus-within:bg-surface-active",
         active
           ? "bg-surface-active text-foreground"
           : "text-muted-foreground hover:text-foreground",

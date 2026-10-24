@@ -48,7 +48,7 @@ export function ProjectGroup({
         aria-expanded={expanded}
         aria-controls={listId}
         onClick={() => setExpanded((value) => !value)}
-        className="flex h-9 w-full items-center gap-2 rounded-md px-3 text-left text-[13px] text-muted-foreground hover:bg-surface-active hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary"
+        className="flex h-9 w-full items-center gap-2 rounded-md px-3 text-left text-[12px] text-muted-foreground hover:bg-surface-active hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary"
       >
         <Folder className="size-3.5 shrink-0" />
         <span className="min-w-0 flex-1 truncate">{project.title}</span>

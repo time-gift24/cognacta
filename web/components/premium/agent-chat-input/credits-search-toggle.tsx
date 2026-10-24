@@ -25,13 +25,13 @@ export function CreditsSearchToggle({
       whileTap={reduce ? undefined : { scale: 0.96 }}
       transition={SPRING_PRESS}
       className={cn(
-        "relative h-9 shrink-0 overflow-hidden rounded-full text-sm transition-[width,color,background-color] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "relative h-8 shrink-0 overflow-hidden rounded-full text-sm transition-[width,color,background-color] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         enabled
-          ? "w-[92px] bg-primary/10 text-primary"
+          ? "w-[84px] bg-primary/10 text-primary"
           : "w-9 text-muted-foreground hover:bg-muted hover:text-foreground",
       )}
     >
-      <Globe2 className="absolute top-1/2 left-[9px] size-[18px] -translate-y-1/2" />
+      <Globe2 className="absolute top-1/2 left-[8px] size-[16px] -translate-y-1/2" />
       <span
         aria-hidden={!enabled}
         className={cn(

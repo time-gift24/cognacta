@@ -29,9 +29,9 @@ export function ThemeQuickToggle() {
       className="grid size-10 place-items-center rounded-lg text-muted-foreground hover:bg-surface-active hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary"
     >
       {next === "light" ? (
-        <Sun className="size-[18px]" />
+        <Sun className="size-[16px]" />
       ) : (
-        <Moon className="size-[18px]" />
+        <Moon className="size-[16px]" />
       )}
     </button>
   );

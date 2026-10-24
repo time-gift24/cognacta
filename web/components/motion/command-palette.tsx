@@ -293,10 +293,10 @@ export function CommandPalette({
                   id={`${uid}-list`}
                   role="listbox"
                   aria-label={t("commands")}
-                  className="max-h-[60vh] overflow-y-auto overscroll-contain p-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                  className="max-h-[60vh] overflow-y-auto overscroll-contain p-1.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                 >
                   {rows.length === 0 ? (
-                    <div className="p-8 text-center text-sm text-muted-foreground">
+                    <div className="p-6 text-center text-sm text-muted-foreground">
                       {resolvedEmptyMessage}
                     </div>
                   ) : (

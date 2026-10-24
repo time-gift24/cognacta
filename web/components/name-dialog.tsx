@@ -35,7 +35,7 @@ export function NameDialog({
       open={open}
       onOpenChange={onOpenChange}
       backdropClassName="bg-black/40 backdrop-blur-none"
-      panelClassName="max-w-sm rounded-2xl border border-border bg-background p-6"
+      panelClassName="max-w-sm rounded-2xl border border-border bg-background p-5"
     >
       <AnimatedModalTitle className="text-lg font-semibold">
         {title}

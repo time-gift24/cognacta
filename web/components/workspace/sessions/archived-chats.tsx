@@ -18,7 +18,7 @@ export function ArchivedChats() {
       session.title.toLowerCase().includes(query.trim().toLowerCase()),
   );
   return (
-    <div className="mx-auto w-full max-w-4xl px-5 pt-20 pb-10 sm:px-8 lg:pt-12">
+    <div className="mx-auto w-full max-w-4xl px-4 pt-14 pb-8 sm:px-6 lg:pt-9">
       <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
       <p className="mt-2 text-sm text-muted-foreground">
         {t("subtitle")}
@@ -36,7 +36,7 @@ export function ArchivedChats() {
       </label>
       <div className="mt-4 divide-y divide-border overflow-hidden rounded-2xl border border-border">
         {archived.map((session) => (
-          <div key={session.id} className="flex items-center gap-3 p-4">
+          <div key={session.id} className="flex items-center gap-3 p-3">
             <Archive className="size-4 text-muted-foreground" />
             <Link
               className="min-w-0 flex-1 truncate rounded text-sm hover:underline focus-visible:outline-2 focus-visible:outline-primary"
@@ -48,7 +48,7 @@ export function ArchivedChats() {
           </div>
         ))}
         {!archived.length && (
-          <p className="p-10 text-center text-sm text-muted-foreground">
+          <p className="p-8 text-center text-sm text-muted-foreground">
             {!ready
               ? t("loading")
               : query

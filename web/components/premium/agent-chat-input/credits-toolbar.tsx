@@ -46,7 +46,7 @@ export function CreditsToolbar({
       <div className="flex min-w-0 items-center gap-0.5 text-muted-foreground">
         {attachControl ?? (
           <ActionButton label={t("attachFiles")} onClick={onAttach}>
-            <Paperclip className="size-[18px]" />
+            <Paperclip className="size-[16px]" />
           </ActionButton>
         )}
         <CreditsSearchToggle
@@ -66,7 +66,7 @@ export function CreditsToolbar({
       <div className="flex shrink-0 items-center gap-1 text-muted-foreground">
         {onVoice && (
           <ActionButton label={t("voiceInput")} onClick={onVoice}>
-            <Mic className="size-[18px]" />
+            <Mic className="size-[16px]" />
           </ActionButton>
         )}
         <motion.button
@@ -89,7 +89,7 @@ export function CreditsToolbar({
               {busy ? (
                 <Square className="size-3.5 fill-current" />
               ) : (
-                <ArrowUp className="size-[18px]" strokeWidth={2.4} />
+                <ArrowUp className="size-[16px]" strokeWidth={2.4} />
               )}
             </motion.span>
           </AnimatePresence>

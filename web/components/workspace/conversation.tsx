@@ -40,9 +40,9 @@ export function Conversation({
         busy={thinking}
         className="flex-1"
         viewportProps={{ tabIndex: 0 }}
-        contentClassName="px-4 sm:px-6"
+        contentClassName="px-3 sm:px-5"
       >
-        <MessageGroup spacing="default" className="gap-7 pt-16 pb-6 lg:pt-10">
+        <MessageGroup spacing="default" className="gap-5 pt-10 pb-4 lg:pt-7">
           <AnimatePresence initial={false}>
             {messages.map((message, index) => (
               <Message
@@ -115,7 +115,7 @@ export function Conversation({
           </AnimatePresence>
         </MessageGroup>
       </MessageScroller>
-      <div className="relative z-10 shrink-0 border-border/60 border-t bg-background/35 px-4 pt-3 pb-4 sm:px-6">
+      <div className="relative z-10 shrink-0 border-border/60 border-t bg-background/35 px-3 pt-2 pb-3 sm:px-5">
         <Composer compact thinking={thinking} {...composerProps} />
       </div>
     </div>

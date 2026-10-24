@@ -59,17 +59,17 @@ typography:
     letterSpacing: "-0.02em"
   body:
     fontFamily: "Geist, ui-sans-serif, system-ui, sans-serif"
-    fontSize: "0.875rem"
+    fontSize: "0.8125rem"
     fontWeight: 400
     lineHeight: 1.5
   small:
     fontFamily: "Geist, ui-sans-serif, system-ui, sans-serif"
-    fontSize: "0.8125rem"
+    fontSize: "0.75rem"
     fontWeight: 400
     lineHeight: 1.45
   label:
     fontFamily: "Geist, ui-sans-serif, system-ui, sans-serif"
-    fontSize: "0.75rem"
+    fontSize: "0.6875rem"
     fontWeight: 500
     lineHeight: 1.4
   micro:
@@ -84,13 +84,13 @@ typography:
     fontWeight: 400
     lineHeight: 1.4
 spacing:
-  base: "4px"
-  tight: "8px"
-  compact: "12px"
-  standard: "16px"
-  roomy: "24px"
-  section: "32px"
-  page: "64px"
+  base: "3.5px"
+  tight: "7px"
+  compact: "10.5px"
+  standard: "14px"
+  roomy: "21px"
+  section: "28px"
+  page: "49px"
 rounded:
   control: "8px"
   field: "12px"
@@ -102,43 +102,43 @@ components:
     backgroundColor: "{colors.primary}"
     textColor: "{colors.primary-foreground}"
     rounded: "{rounded.full}"
-    size: "36px"
+    size: "32px"
   button-ghost:
     backgroundColor: "transparent"
     textColor: "{colors.foreground}"
     rounded: "{rounded.control}"
-    height: "36px"
-    padding: "0 12px"
+    height: "32px"
+    padding: "0 10px"
   button-primary:
     backgroundColor: "{colors.primary-strong}"
     textColor: "{colors.primary-foreground}"
     rounded: "{rounded.full}"
-    height: "40px"
-    padding: "0 20px"
+    height: "32px"
+    padding: "0 14px"
   button-danger:
     backgroundColor: "{colors.danger-strong}"
     textColor: "{colors.danger-foreground}"
     rounded: "{rounded.full}"
-    height: "44px"
-    padding: "0 20px"
+    height: "36px"
+    padding: "0 14px"
   chip:
     backgroundColor: "transparent"
     textColor: "{colors.muted-foreground}"
     rounded: "{rounded.full}"
-    height: "40px"
-    padding: "8px 14px"
+    height: "36px"
+    padding: "6px 12px"
   input:
     backgroundColor: "{colors.background}"
     textColor: "{colors.foreground}"
     rounded: "{rounded.field}"
-    height: "44px"
-    padding: "0 12px"
+    height: "36px"
+    padding: "0 10px"
   nav-item:
     backgroundColor: "transparent"
     textColor: "{colors.muted-foreground}"
     rounded: "{rounded.control}"
-    height: "36px"
-    padding: "0 12px"
+    height: "32px"
+    padding: "0 10px"
   composer:
     backgroundColor: "{colors.glass}"
     textColor: "{colors.foreground}"
@@ -148,7 +148,7 @@ components:
     backgroundColor: "{colors.glass}"
     textColor: "{colors.foreground}"
     rounded: "{rounded.field}"
-    padding: "6px"
+    padding: "5px"
 ---
 
 # Cognacta Canopy 设计系统
@@ -216,9 +216,9 @@ Cognacta 是企业级 agent 运行底座：agent 在服务端运行，人在这�
 - **Display**（500，`clamp(1.65rem, 4vw, 2.15rem)`，1.25，-0.04em）：只给空状态的主问句。字距收到底线 -0.04em，不再更低。
 - **Headline**（600，1.5rem，1.4，-0.025em）：页面标题，如 Settings、Projects。
 - **Title**（600，1.25rem，1.4，-0.02em）：侧栏字标与区块标题。
-- **Body**（400，0.875rem，1.5）：对话、设置、说明的默认正文。
-- **Small**（400，0.8125rem，1.45）：starter chip 与次级说明。
-- **Label**（500，0.75rem，1.4）：表单标签、菜单说明。
+- **Body**（400，0.8125rem，1.5）：对话、设置、说明的默认正文；紧凑密度下的阅读基线。
+- **Small**（400，0.75rem，1.45）：starter chip 与次级说明。
+- **Label**（500，0.6875rem，1.4）：表单标签、菜单说明。
 - **Micro**（500，0.625rem，1.4，0.12em，uppercase）：只用于侧栏与命令面板的分组标签，不用于标题上方。
 - **Mono**（400，0.625rem，1.4）：快捷键、ID、代码、数值。
 
@@ -235,11 +235,12 @@ Cognacta 是企业级 agent 运行底座：agent 在服务端运行，人在这�
 
 应用外壳是 `h-dvh` 的左右结构：左侧 248px 固定侧栏，右侧单列工作区。侧栏在 <1024px 收起为 `min(85vw, 17rem)` 的抽屉；内容区不设卡片网格，所有主要任务都在单列里完成。
 
-- **Rail：** 248px；水平内边距 10px、垂直 12px；品牌行 40px；模式切换 3 等分 40px；导航行 36px；分组间距 20px；底部账户行 56px。
-- **空状态：** 内容列 44rem；顶部 `clamp(4rem, 11vh, 7.5rem)`；主问句与 composer 间距 28px；starter chips 与 composer 间距 16px。
-- **对话：** 列宽 48rem；消息间距 28px；顶部 40–64px；composer 固定在列底。
-- **设置与知识库：** 列宽 48rem；顶部 80px（桌面 48px）；左右 20–32px。
-- **节奏：** 4px 基线；常用步进 8 / 12 / 16 / 24 / 32 / 64。紧邻元素用 4–8，区块之间用 24–32，页面顶部用 64–80。
+- **Rail：** 248px；水平内边距 8.75px、垂直 10.5px；品牌行 35px；模式切换 3 等分 35px；导航行 31.5px；分组间距 17.5px；底部账户行 42px。
+- **空状态：** 内容列 44rem；顶部 `clamp(2.75rem, 7vh, 4.75rem)`；主问句与 composer 间距 17.5px；starter chips 与 composer 间距 10.5px。
+- **对话：** 列宽 48rem；消息间距 17.5px；顶部 24.5–35px；composer 固定在列底。
+- **设置与知识库：** 列宽 48rem；顶部 49px（桌面 31.5px）；左右 14–21px。
+- **节奏：** 3.5px 紧凑基线；常用步进 7 / 10.5 / 14 / 21 / 28 / 49。紧邻元素用 3.5–7，区块之间用 17.5–28，页面顶部用 31.5–49。
+- **触控设备：** `pointer: coarse` 时恢复 4px 标准间距，字号仍保持 13px；紧凑密度只作用于桌面精细指针。
 
 ### Named Rules
 **The Rail Rule.** 侧栏固定 248px，不随视口变宽；信息密度靠行高与分组建立，不靠拉伸。
@@ -272,39 +273,39 @@ Cognacta 是企业级 agent 运行底座：agent 在服务端运行，人在这�
 ## Components
 
 ### Buttons
-- **Send（primary）：** 36px 圆形、翠绿底、`primary-foreground` 18px 箭头（暗主题深墨、亮主题白）；hover 降到 85% 不透明度；focus-visible 用 2px ring + 2px offset；生成中切换为 stop 方块。箭头是图形，3:1 即可。
-- **Primary text（primary-strong）：** 40px 高（设置页 44px）、全圆角、`primary-foreground` 标签；保存、连接、创建等带文字的主动作，白字 ≥4.5:1。
-- **Danger text（danger-strong）：** 44px 高、全圆角、白字；只用于确认删除这类不可逆动作。
-- **Ghost / icon：** 36–40px 方形、透明底、8px 圆角；hover 用 `surface-active`；focus 同 ring。
+- **Send（primary）：** 32px 圆形、翠绿底、`primary-foreground` 16px 箭头（暗主题深墨、亮主题白）；hover 降到 85% 不透明度；focus-visible 用 2px ring + 2px offset；生成中切换为 stop 方块。箭头是图形，3:1 即可。
+- **Primary text（primary-strong）：** 32px 高（设置页 35px）、全圆角、`primary-foreground` 标签；保存、连接、创建等带文字的主动作。
+- **Danger text（danger-strong）：** 36px 高、全圆角、白字；只用于确认删除这类不可逆动作。
+- **Ghost / icon：** 32–36px 方形、透明底、8px 圆角；hover 用 `surface-active`；focus 同 ring。
 - **Text / link：** 翠绿文字 + 4px 下划线偏移；不把链接做成按钮。
 
 ### Chips
-- **Starter chip：** 最小 40px 高、全圆角、透明底、1px `border`、13px 文字、`muted-foreground`；hover 时边框升到 `border-strong`、底变 `surface-raised`、文字变 `foreground`，图标转翠绿。
+- **Starter chip：** 最小 36px 高、全圆角、透明底、1px `border`、12px 文字、`muted-foreground`；hover 时边框升到 `border-strong`、底变 `surface-raised`、文字变 `foreground`，图标转翠绿。
 - **状态 chip：** 全圆角 + 1px 边框 + 12px 文字；颜色只用于状态，不填充大面积。
 
 ### Inputs / Fields
-- **Default：** 44px 高、12px 圆角、`background` 底、1px `border`、14px 文字；placeholder 用 `muted-foreground`。
+- **Default：** 36px 高、12px 圆角、`background` 底、1px `border`、13px 文字；placeholder 用 `muted-foreground`。
 - **Focus：** 边框转 `muted-foreground`，不加彩色 glow；主按钮才有翠绿 ring。
 - **Error：** `aria-invalid` 时边框转 `danger`；禁用态 50% 不透明度。
 
 ### Navigation
-- **Rail：** 248px、`surface` 实底；品牌 20px/600；搜索、主题切换与收起是 40px 图标按钮。
-- **Mode pill：** 3 等分、40px 高、8px 圆角；激活项用 `surface-active` 实底 + `foreground`，用 `SPRING_SWAP` 在项间移动。
-- **Rows：** 36px 高、8px 圆角、16px 图标、14px 文字；默认 `muted-foreground`，hover 与当前行用 `surface-active` + `foreground`。
+- **Rail：** 248px、`surface` 实底；品牌 20px/600；搜索、主题切换与收起是 35px 图标按钮。
+- **Mode pill：** 3 等分、35px 高、8px 圆角；激活项用 `surface-active` 实底 + `foreground`，用 `SPRING_SWAP` 在项间移动。
+- **Rows：** 31.5px 高、8px 圆角、14px 图标、13px 文字；默认 `muted-foreground`，hover 与当前行用 `surface-active` + `foreground`。
 - **Groups：** 10px / 500 / 0.12em uppercase、`faint`；只做分组标签。
-- **Profile：** 56px 行；32px 圆形头像；14px 名称 + 12px 次级。
+- **Profile：** 42px 行；24.5px 圆形头像；13px 名称 + 11px 次级。
 
 ### Composer（signature）
-- 外层 `glass-panel`、3px padding、20px 圆角；内层 84% 实底、17.6px 圆角、最小 80px、三行起。
+- 外层 `glass-panel`、3px padding、20px 圆角；内层 84% 实底、17.6px 圆角、最小 72px、两行起。
 - 顶部 credits 条：12–13px `muted-foreground`，与输入区之间没有分隔线。
-- 工具栏：左侧 attach / search / model，右侧 36px 翠绿发送键；模型选择是 13px 文字 + chevron，不做成按钮块。
-- compact 态（对话底部）最小 40px、单行起；技能命令浮层覆盖在 composer 上方，带 `border-strong`、磨砂和投影。
+- 工具栏：左侧 attach / search / model，右侧 32px 翠绿发送键；模型选择是 12px 文字 + chevron，不做成按钮块。
+- compact 态（对话底部）最小 35px、单行起；技能命令浮层覆盖在 composer 上方，带 `border-strong`、磨砂和投影。
 
 ### Floating Layers
 - **Dropdown：** 12px 圆角、玻璃面板、1px 玻璃边框、投影；从触发点用 clip-path + scale 0.96 展开，180–220ms。
 - **Command palette：** 居中、最大 36rem、16px 圆角、玻璃面板；搜索行 48px；分组标签 10px uppercase；键盘高亮用 `primary/5` 的极浅底 + `foreground` 文字。
 - **Modal：** 16px 圆角、`background` 实底、1px 边框、24px padding、最大 24–36rem；背板 `foreground/10` + blur，进出 150–200ms。
-- **Image preview：** 全屏 `black/70` + blur-sm；关闭按钮 36px 圆形。
+- **Image preview：** 全屏 `black/70` + blur-sm；关闭按钮 32px 圆形。
 
 ### Motion
 - **状态反馈：** `cubic-bezier(0.16, 1, 0.3, 1)`，160–220ms；用于 hover、颜色、透明度。
@@ -324,6 +325,7 @@ Cognacta 是企业级 agent 运行底座：agent 在服务端运行，人在这�
 - **Do** 保持 Geist 单一家族，display 最深只收到 -0.04em。
 - **Do** 暗主题用亮绿配深墨字，亮主题用深绿配白字；两套都过 4.5:1。
 - **Do** 中英文各跑一遍主要断点，中文文案不溢出、不挤压控件。
+- **Do** 用 3.5px 紧凑基线组织内外间距；body 13px，标签 11px，不靠大字号撑层级。
 
 ### Don't
 - **Don't** 引入第二个品牌色、第二套展示字体或衬线字体。

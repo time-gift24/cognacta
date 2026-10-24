@@ -77,7 +77,7 @@ export function KnowledgeBase() {
   );
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-5 pt-20 pb-10 sm:px-8 lg:pt-12">
+    <div className="mx-auto w-full max-w-5xl px-4 pt-14 pb-8 sm:px-6 lg:pt-9">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="mb-2 text-xs text-muted-foreground">
@@ -100,7 +100,7 @@ export function KnowledgeBase() {
         </Button>
       </header>
 
-      <div className="mt-8 flex items-center gap-2">
+      <div className="mt-6 flex items-center gap-2">
         <label className="relative min-w-0 flex-1 sm:max-w-xs">
           <span className="sr-only">{t("search")}</span>
           <Search className="absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -150,7 +150,7 @@ export function KnowledgeBase() {
               type="button"
               disabled={!ready}
               onClick={() => edit(entry)}
-              className={`flex w-full items-center gap-3 border-b border-border p-4 text-left last:border-0 hover:bg-surface-raised ${focus}`}
+              className={`flex w-full items-center gap-3 border-b border-border p-3 text-left last:border-0 hover:bg-surface-raised ${focus}`}
             >
               <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-surface-raised">
                 <Icon className="size-5 text-muted-foreground" />
@@ -163,7 +163,7 @@ export function KnowledgeBase() {
                   {entry.url || entry.content}
                 </span>
               </span>
-              <span className="hidden rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground sm:inline-flex">
+              <span className="hidden rounded-full border border-border px-2 py-0.5 text-[10px] text-muted-foreground sm:inline-flex">
                 {entry.url ? t("link") : t("note")}
               </span>
               <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
@@ -171,7 +171,7 @@ export function KnowledgeBase() {
           );
         })}
         {!visible.length && (
-          <div className="px-4 py-12 text-center">
+          <div className="px-4 py-9 text-center">
             <BookOpen className="mx-auto size-6 text-muted-foreground" />
             <p className="mt-3 text-sm">
               {entries.length ? t("noMatchTitle") : t("emptyTitle")}
@@ -205,7 +205,7 @@ export function KnowledgeBase() {
         open={open}
         onOpenChange={setOpen}
         backdropClassName="bg-black/40 backdrop-blur-none"
-        panelClassName="relative max-w-xl rounded-2xl border border-border bg-background p-5 sm:p-6"
+        panelClassName="relative max-w-xl rounded-2xl border border-border bg-background p-4 sm:p-5"
       >
         <Button
           variant="ghost"
@@ -222,7 +222,7 @@ export function KnowledgeBase() {
           {t("modalDescription")}
         </AnimatedModalDescription>
         <form
-          className="mt-5 space-y-4"
+          className="mt-4 space-y-3"
           onSubmit={(event) => {
             event.preventDefault();
             const cleaned = {

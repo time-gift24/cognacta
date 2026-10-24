@@ -44,7 +44,7 @@ export function DeleteConfirmationModal({
       open={open}
       onOpenChange={onOpenChange}
       backdropClassName="bg-black/40 backdrop-blur-none"
-      panelClassName="max-w-sm rounded-2xl border border-border bg-background p-6"
+      panelClassName="max-w-sm rounded-2xl border border-border bg-background p-5"
     >
       <Trash className="mb-4 size-6 text-muted-foreground" />
       <AnimatedModalTitle className="text-lg font-semibold">
@@ -63,13 +63,13 @@ export function DeleteConfirmationModal({
           data-autofocus
           variant="outline"
           onClick={() => onOpenChange(false)}
-          className="h-11 focus-visible:outline-2 focus-visible:outline-primary"
+          className="h-10 focus-visible:outline-2 focus-visible:outline-primary"
         >
           {t("cancel")}
         </Button>
         <Button
           onClick={onConfirm}
-          className="h-11 bg-danger-strong text-white hover:bg-danger-strong/90 focus-visible:outline-2 focus-visible:outline-danger"
+          className="h-10 bg-danger-strong text-white hover:bg-danger-strong/90 focus-visible:outline-2 focus-visible:outline-danger"
         >
           {t(actionKey)}
         </Button>

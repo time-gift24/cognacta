@@ -17,7 +17,7 @@ export const Input = forwardRef<
     <input
       ref={ref}
       type={type}
-      className={cn(fieldStyles, "h-11 rounded-xl px-3", className)}
+      className={cn(fieldStyles, "h-10 rounded-xl px-3", className)}
       {...props}
     />
   );
@@ -30,7 +30,7 @@ export const Textarea = forwardRef<
   return (
     <textarea
       ref={ref}
-      className={cn(fieldStyles, "min-h-28 resize-y rounded-xl p-3", className)}
+      className={cn(fieldStyles, "min-h-24 resize-y rounded-xl p-3", className)}
       {...props}
     />
   );

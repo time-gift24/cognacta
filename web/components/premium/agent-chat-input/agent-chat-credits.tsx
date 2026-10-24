@@ -234,7 +234,7 @@ export function AgentChatCredits({
           defaultValue={value ?? defaultValue}
           placeholder={placeholder}
           disabled={disabled}
-          minRows={compact ? 1 : 3}
+          minRows={compact ? 1 : 2}
           maxRows={6}
           onChange={handleComposerChange}
           onSlashQueryChange={skillCommand.onQueryChange}
@@ -242,7 +242,7 @@ export function AgentChatCredits({
           onSubmit={submit}
           className={cn(
             "px-2.5 pb-2 !text-base leading-6 sm:px-3",
-            compact ? "min-h-10 pt-2 sm:pt-2" : "min-h-20 pt-2.5 sm:pt-3",
+            compact ? "min-h-10 pt-1.5 sm:pt-1.5" : "min-h-[4.5rem] pt-2 sm:pt-2",
           )}
         />
         <CreditsToolbar

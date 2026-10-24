@@ -41,7 +41,7 @@ export function ComposerContextMenu({
           aria-label={t("addContext")}
           className="grid size-9 place-items-center rounded-full hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary"
         >
-          <Plus className="size-[18px]" />
+          <Plus className="size-[16px]" />
         </button>
       </AnimatedDropdownTrigger>
       <AnimatedDropdownContent

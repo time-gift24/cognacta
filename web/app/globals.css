@@ -56,6 +56,17 @@
   --ambient-b: oklch(52% 0.12 162 / 0.05);
 }
 
+@theme {
+  /* Compact workspace density: 3.5px spacing base and a smaller reading scale. */
+  --spacing: 0.21875rem;
+  --text-xs: 0.6875rem;
+  --text-xs--line-height: 1.4;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.5;
+  --text-base: 0.9375rem;
+  --text-base--line-height: 1.55;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -99,6 +110,8 @@
     margin: 0;
     color: var(--foreground);
     font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
     scrollbar-color: color-mix(in oklab, var(--foreground) 16%, transparent)
@@ -178,6 +191,13 @@
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
     box-shadow: none;
+  }
+}
+
+@media (pointer: coarse) {
+  :root {
+    /* Keep touch targets at the standard scale while type stays compact. */
+    --spacing: 0.25rem;
   }
 }
 

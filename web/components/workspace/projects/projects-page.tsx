@@ -27,7 +27,7 @@ export function ProjectsPage() {
   const [deleting, setDeleting] = useState<Project | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   return (
-    <div className="mx-auto w-full max-w-4xl px-5 pt-20 pb-10 sm:px-8 lg:pt-12">
+    <div className="mx-auto w-full max-w-4xl px-4 pt-14 pb-8 sm:px-6 lg:pt-9">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
@@ -46,7 +46,7 @@ export function ProjectsPage() {
           {t("new")}
         </Button>
       </header>
-      <div className="mt-8 divide-y divide-border overflow-hidden rounded-2xl border border-border">
+      <div className="mt-6 divide-y divide-border overflow-hidden rounded-2xl border border-border">
         {projects.map((project) => {
           const chatCount = sessions.filter(
             (session) => session.projectId === project.id && !session.archived,
@@ -54,7 +54,7 @@ export function ProjectsPage() {
           return (
             <div
               key={project.id}
-              className="flex flex-wrap items-center gap-3 p-4"
+              className="flex flex-wrap items-center gap-3 p-3"
             >
               <Folder className="size-5 text-muted-foreground" />
               <div className="min-w-0 flex-1">
@@ -103,7 +103,7 @@ export function ProjectsPage() {
           );
         })}
         {!projects.length && (
-          <p className="p-10 text-center text-sm text-muted-foreground">
+          <p className="p-8 text-center text-sm text-muted-foreground">
             {t("empty")}
           </p>
         )}

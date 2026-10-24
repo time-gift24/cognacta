@@ -91,7 +91,7 @@ export function IntegrationsDirectory() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-5 pt-20 pb-10 sm:px-8 lg:pt-12">
+    <div className="mx-auto w-full max-w-5xl px-4 pt-14 pb-8 sm:px-6 lg:pt-9">
       <header>
         <p className="mb-2 text-xs text-muted-foreground">
           {t("breadcrumb")}
@@ -104,7 +104,7 @@ export function IntegrationsDirectory() {
         </p>
       </header>
 
-      <div className="mt-8 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+      <div className="mt-6 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div
           role="group"
           aria-label={t("view")}
@@ -171,7 +171,7 @@ export function IntegrationsDirectory() {
         </div>
       </div>
 
-      <div className="mt-4 grid gap-3 md:grid-cols-2">
+      <div className="mt-3 grid gap-2.5 md:grid-cols-2">
         <AnimatePresence initial={false} mode="popLayout">
           {visible.map((app) => (
             <motion.button
@@ -186,7 +186,7 @@ export function IntegrationsDirectory() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.12 }}
-              className="group flex items-start gap-3 rounded-2xl border border-border p-4 text-left transition-colors hover:bg-surface-raised focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-50"
+              className="group flex items-start gap-3 rounded-2xl border border-border p-3 text-left transition-colors hover:bg-surface-raised focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-50"
             >
               <IntegrationMark
                 integration={app}
@@ -234,7 +234,7 @@ export function IntegrationsDirectory() {
           </button>
         </div>
       ) : null}
-      <p className="mt-6 text-xs text-muted-foreground">
+      <p className="mt-4 text-xs text-muted-foreground">
         {t("footnote")}
       </p>
       <p role="status" className="mt-2 text-xs text-muted-foreground">

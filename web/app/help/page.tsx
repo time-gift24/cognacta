@@ -5,10 +5,10 @@ export default async function HelpPage() {
   const t = await getTranslations("Help");
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-5 pt-20 pb-10 sm:px-8 lg:pt-12">
+    <div className="mx-auto w-full max-w-3xl px-4 pt-14 pb-8 sm:px-6 lg:pt-9">
       <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
       <p className="mt-2 text-sm text-muted-foreground">{t("subtitle")}</p>
-      <div className="mt-8 space-y-6 text-sm leading-6">
+      <div className="mt-6 space-y-6 text-sm leading-6">
         <section>
           <h2 className="font-medium">{t("chatsTitle")}</h2>
           <p className="mt-1 text-muted-foreground">{t("chatsBody")}</p>

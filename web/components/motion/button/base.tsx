@@ -39,10 +39,10 @@ const VARIANT_CLASS: Record<ButtonVariant, string> = {
 };
 
 const SIZE_CLASS: Record<ButtonSize, string> = {
-  sm: "h-8 gap-1.5 rounded-full px-3 text-xs",
-  md: "h-10 gap-2 rounded-full px-5 text-sm",
-  lg: "h-12 gap-2 rounded-full px-6 text-base",
-  icon: "h-8 w-8 rounded-lg",
+  sm: "h-7 gap-1.5 rounded-full px-2.5 text-xs",
+  md: "h-9 gap-1.5 rounded-full px-4 text-sm",
+  lg: "h-10 gap-1.5 rounded-full px-5 text-sm",
+  icon: "h-7 w-7 rounded-lg",
 };
 
 function pressMotion({

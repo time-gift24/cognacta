@@ -65,7 +65,7 @@ export function SidebarContent({
           onClick={onSearch}
           className="grid size-10 place-items-center rounded-lg text-muted-foreground hover:bg-surface-active focus-visible:outline-2 focus-visible:outline-primary"
         >
-          <Search className="size-[18px]" />
+          <Search className="size-[16px]" />
         </button>
         <ThemeQuickToggle />
         <button
@@ -74,7 +74,7 @@ export function SidebarContent({
           onClick={onCollapse}
           className="grid size-10 place-items-center rounded-lg text-muted-foreground hover:bg-surface-active focus-visible:outline-2 focus-visible:outline-primary"
         >
-          <PanelLeft className="size-[18px]" />
+          <PanelLeft className="size-[16px]" />
         </button>
       </div>
       <nav

@@ -34,14 +34,14 @@ export function CreditsTopLayer({
 }) {
   const t = useTranslations("Composer");
   const visibleRows = Math.min(Math.max(skills.length, 1), 4);
-  const expandedHeight = 44 + visibleRows * 36;
-  const collapsedHeight = compact ? 0 : 36;
+  const expandedHeight = 40 + visibleRows * 32;
+  const collapsedHeight = compact ? 0 : 32;
 
   return (
     <div
       data-slot="credits-top-layer"
       data-state={skillsVisible ? "skills" : "credits"}
-      className={cn("relative z-20", compact ? "h-0" : "h-9")}
+      className={cn("relative z-20", compact ? "h-0" : "h-8")}
     >
       <AnimatePresence initial={false}>
         {skillsVisible ? (

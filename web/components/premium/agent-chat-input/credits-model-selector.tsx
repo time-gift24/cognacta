@@ -45,7 +45,7 @@ export function CreditsModelSelector({
           aria-label={t("selectModel", { model: selected.label })}
           whileTap={reduce ? undefined : { scale: 0.96 }}
           transition={SPRING_PRESS}
-          className="flex h-8 min-w-0 max-w-32 items-center gap-1 rounded-full px-1.5 text-[13px] font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex h-8 min-w-0 max-w-32 items-center gap-1 rounded-full px-1.5 text-[12px] font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
         >
           <ModelLogo modelId={selected.id} />
           <span className="truncate">{selected.label}</span>
@@ -87,7 +87,7 @@ export function CreditsModelSelector({
               )}
             >
               <ModelLogo modelId={model.id} />
-              <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">
+              <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-foreground">
                 {model.label}
               </span>
               <Check
