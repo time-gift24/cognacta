@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { cookies } from "next/headers";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages, getTranslations } from "next-intl/server";
 import type { ReactNode } from "react";
@@ -23,6 +24,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const locale = await getLocale();
   const messages = await getMessages();
+  const rail = (await cookies()).get("cognacta.sidebar.rail")?.value === "1";
 
   return (
     <html
@@ -42,7 +44,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           <ThemeProvider>
             <SessionProvider key={locale}>
               <KnowledgeProvider key={locale}>
-                <WorkspaceShell>{children}</WorkspaceShell>
+                <WorkspaceShell initialRail={rail}>{children}</WorkspaceShell>
               </KnowledgeProvider>
             </SessionProvider>
           </ThemeProvider>

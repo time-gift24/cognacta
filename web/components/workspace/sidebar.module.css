@@ -1,0 +1,1142 @@
+/* Cognacta workspace sidebar, built from Arc's workspace-sidebar and app-rail
+   interaction models. The rail is one width value; labels clear before it
+   settles, and the rail's dividers and dots arrive after they are gone. */
+
+.sidebar {
+  --full: 272px;
+  --rail: 64px;
+  --row: 32px;
+  --row-radius: 8px;
+  --row-hover: color-mix(in oklab, var(--foreground) 4.5%, transparent);
+  --row-active: color-mix(in oklab, var(--foreground) 7%, transparent);
+  --tone-green: var(--primary);
+  --tone-blue: var(--series-2);
+  --tone-amber: var(--series-3);
+  --tone-violet: var(--series-4);
+  --tone-coral: var(--series-5);
+  --tone-slate: var(--faint);
+  position: relative;
+  display: flex;
+  width: min(100%, var(--full));
+  max-width: 100%;
+  height: 100dvh;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--foreground);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  letter-spacing: var(--tracking-body);
+  line-height: var(--leading-body);
+}
+
+.inline {
+  flex: none;
+}
+
+/* ---------------------------------------------------------------- */
+/* Header: workspace menu, search, and the rail toggle               */
+/* ---------------------------------------------------------------- */
+
+.header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  flex: none;
+  gap: 6px;
+  padding: 8px 12px 4px;
+}
+
+.switcher {
+  position: relative;
+  display: grid;
+  width: 100%;
+  min-height: 44px;
+  grid-template-columns: 32px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-radius: 10px;
+  padding: 6px 10px 6px 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+.switcher[aria-expanded="true"],
+.switcher:active {
+  background: var(--row-active);
+}
+.switcherText {
+  display: grid;
+  min-width: 0;
+}
+.workspaceName {
+  overflow: hidden;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workspaceMeta {
+  overflow: hidden;
+  color: var(--faint);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chevron {
+  width: 16px;
+  height: 16px;
+  color: var(--faint);
+  transition:
+    color var(--duration-fast) var(--ease-standard),
+    transform var(--duration-spring) var(--ease-spring);
+}
+.switcher[aria-expanded="true"] .chevron {
+  color: var(--foreground);
+  transform: rotate(180deg);
+}
+
+.mark {
+  position: relative;
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 9px;
+  background: var(--surface-active);
+  color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.searchRow {
+  position: relative;
+  min-width: 0;
+}
+.searchClip {
+  min-width: 0;
+  margin-right: 44px;
+  overflow: hidden;
+}
+.search {
+  width: 100%;
+}
+.searchClip[data-frozen] .search {
+  width: var(--search-width, 100%);
+}
+.search label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.search div:has(> input) {
+  min-height: 32px;
+  border-color: var(--border);
+  border-radius: 8px;
+  padding: 0 8px 0 10px;
+  background: color-mix(in oklab, var(--background) 72%, var(--surface));
+}
+.search div:has(> input):focus-within {
+  border-color: var(--text-muted);
+}
+.search div:has(> input) > svg {
+  width: 15px;
+  height: 15px;
+}
+
+.toggle {
+  position: absolute;
+  top: 50%;
+  right: 3px;
+  display: grid;
+  width: 32px;
+  height: 32px;
+  margin-top: -16px;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  padding: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard);
+}
+.toggle:active {
+  background: var(--row-active);
+  color: var(--foreground);
+}
+
+/* ---------------------------------------------------------------- */
+/* Scroll, sections, and rows                                        */
+/* ---------------------------------------------------------------- */
+
+.scroll {
+  position: relative;
+  min-height: 0;
+  flex: 1;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 12px 12px;
+  scrollbar-width: thin;
+}
+.stack {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+.section {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+}
+.section + .section {
+  margin-top: 2px;
+}
+
+/* Titles sit on the bottom of a box whose height folds in the rail, where a
+   hairline takes their place. */
+.sectionTitle {
+  position: relative;
+  height: 32px;
+  margin: 0;
+  overflow: hidden;
+  color: var(--faint);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+.sectionText {
+  position: absolute;
+  bottom: 7px;
+  left: 12px;
+  line-height: 1;
+  white-space: nowrap;
+}
+.sectionCount {
+  position: absolute;
+  right: 10px;
+  bottom: 7px;
+  color: var(--faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1;
+}
+.divider {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  left: 8px;
+  height: 1px;
+  background: var(--border);
+}
+
+.list {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.item {
+  position: relative;
+  min-width: 0;
+  border-radius: var(--row-radius);
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.item[data-lifted] {
+  z-index: 3;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-floating);
+}
+.itemShell {
+  position: relative;
+  min-width: 0;
+}
+.actions {
+  position: absolute;
+  top: 50%;
+  right: 2px;
+  display: grid;
+  margin-top: -14px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--duration-fast) var(--ease-standard);
+}
+.itemShell:hover .actions,
+.itemShell:focus-within .actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.row {
+  position: relative;
+  display: grid;
+  width: 100%;
+  height: var(--row);
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-radius: var(--row-radius);
+  padding: 0 32px 0 12px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  outline: none;
+  transition:
+    color var(--duration-fast) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-standard);
+  -webkit-tap-highlight-color: transparent;
+}
+.row > :not(.highlight) {
+  position: relative;
+  z-index: 1;
+}
+.row[aria-current="page"] {
+  color: var(--foreground);
+}
+.item[data-lifted] .row {
+  cursor: grabbing;
+}
+.highlight {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: var(--row-radius);
+  background: var(--row-active);
+}
+.lead {
+  display: grid;
+  width: 16px;
+  height: 16px;
+  place-items: center;
+  color: var(--text-muted);
+  transition: color var(--duration-fast) var(--ease-standard);
+}
+.row[aria-current="page"] .lead {
+  color: var(--primary);
+}
+.leadIcon {
+  width: 15px;
+  height: 15px;
+}
+.name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color var(--duration-fast) var(--ease-standard);
+}
+.name[data-unread] {
+  color: var(--foreground);
+}
+.name[data-searching] {
+  color: var(--text-muted);
+}
+.name mark {
+  background: none;
+  color: var(--foreground);
+  font-weight: 500;
+}
+.shortcut {
+  color: var(--faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0;
+}
+.rowChevron {
+  width: 14px;
+  height: 14px;
+  color: var(--faint);
+  transition:
+    transform var(--duration-spring) var(--ease-spring),
+    color var(--duration-fast) var(--ease-standard);
+}
+.rowChevron[data-open] {
+  transform: rotate(90deg);
+}
+.row[aria-expanded="true"] .rowChevron {
+  color: var(--text-secondary);
+}
+
+.rowNested {
+  width: calc(100% - 12px);
+  height: 30px;
+  margin-left: 12px;
+  padding-left: 10px;
+}
+
+.dot {
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--tone, var(--tone-slate));
+  box-shadow: inset 0 0 0 1.5px var(--tone, var(--tone-slate));
+  transition:
+    background-color var(--duration-standard) var(--ease-standard),
+    box-shadow var(--duration-standard) var(--ease-standard);
+}
+.dot[data-tone="green"] {
+  --tone: var(--tone-green);
+}
+.dot[data-tone="blue"] {
+  --tone: var(--tone-blue);
+}
+.dot[data-tone="amber"] {
+  --tone: var(--tone-amber);
+}
+.dot[data-tone="violet"] {
+  --tone: var(--tone-violet);
+}
+.dot[data-tone="coral"] {
+  --tone: var(--tone-coral);
+}
+.dot[data-tone="slate"] {
+  --tone: var(--tone-slate);
+}
+.dot[data-hollow] {
+  background: transparent;
+}
+.dot[data-held] {
+  box-shadow:
+    inset 0 0 0 1.5px var(--tone, var(--tone-slate)),
+    0 0 0 2px color-mix(in oklab, var(--primary) 26%, transparent);
+}
+
+.children {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  list-style: none;
+}
+
+/* The empty state sits at the top of the panel, so it fades in where the
+   results were instead of riding up as the sections close. */
+.empty {
+  position: relative;
+  padding: 20px 12px 8px;
+}
+.emptyBody {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+}
+.empty p {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+.empty span {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+.empty button {
+  margin-top: 10px;
+}
+
+/* ---------------------------------------------------------------- */
+/* Inline project composer                                           */
+/* ---------------------------------------------------------------- */
+
+.composerWrap {
+  padding-top: 2px;
+}
+.composer {
+  position: relative;
+  display: grid;
+  height: var(--row);
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid transparent;
+  border-radius: var(--row-radius);
+  padding: 0 9px 0 11px;
+  color: var(--faint);
+  transition:
+    border-color var(--duration-fast) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-standard) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard);
+}
+.composer[data-state="open"] {
+  border-color: var(--border-strong);
+  background: var(--surface);
+  color: var(--foreground);
+}
+.composer[data-state="open"]:focus-within {
+  border-color: var(--text-muted);
+}
+.composer[data-invalid] {
+  border-color: var(--danger);
+}
+.composer[data-invalid]:focus-within {
+  border-color: var(--danger);
+}
+.composer[data-state="commit"] {
+  color: var(--foreground);
+  transition-duration: var(--duration-standard);
+}
+.composer .lead {
+  position: relative;
+}
+.plus {
+  display: grid;
+  place-items: center;
+}
+.composerField {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  height: 100%;
+  align-items: center;
+}
+.composerLabel {
+  display: block;
+  overflow: hidden;
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.composerInput {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  outline: 0;
+}
+.composerInput:focus-visible {
+  outline: 0;
+}
+.composerInput::placeholder {
+  color: var(--faint);
+}
+.composerInput:read-only {
+  cursor: default;
+}
+.composerTrigger {
+  position: absolute;
+  inset: -1px;
+  z-index: 1;
+  border: 0;
+  border-radius: var(--row-radius);
+  padding: 0;
+  background: transparent;
+  color: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+.composerNote {
+  position: relative;
+  display: grid;
+  color: var(--danger);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+.composerNote > span {
+  grid-area: 1 / 1;
+}
+
+/* ---------------------------------------------------------------- */
+/* Footer: local storage and the account row                        */
+/* ---------------------------------------------------------------- */
+
+.footer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  flex: none;
+  gap: 4px;
+  border-top: 1px solid var(--border);
+  padding: 12px 12px 8px;
+}
+.storageFold {
+  overflow: hidden;
+}
+.storage {
+  display: grid;
+  gap: 8px;
+  padding: 0 2px 8px;
+}
+.storageHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.storageLabel {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: 500;
+}
+.storage[data-full] .storageLabel {
+  color: var(--warning);
+}
+.storage[data-unavailable] .storageLabel {
+  color: var(--danger);
+}
+.percent {
+  flex: none;
+  font-size: var(--text-xs) !important;
+  font-weight: 500 !important;
+  letter-spacing: 0 !important;
+  line-height: 1.4 !important;
+}
+.track {
+  position: relative;
+  height: 4px;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--border);
+}
+.fill {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--primary);
+  transform-origin: left center;
+  transition: background-color var(--duration-standard) var(--ease-standard);
+}
+.storage[data-full] .fill {
+  background: var(--warning);
+}
+.storageDetail {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+.storageError {
+  display: grid;
+  gap: 4px;
+  padding: 0 2px 8px;
+  color: var(--danger);
+  font-size: var(--text-xs);
+}
+.storageError span {
+  color: var(--text-muted);
+}
+
+.user {
+  position: relative;
+  display: grid;
+  width: 100%;
+  min-height: 44px;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-radius: 10px;
+  padding: 4px 8px 4px 2px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-standard);
+  -webkit-tap-highlight-color: transparent;
+}
+.user:active {
+  background: var(--row-active);
+}
+.userText {
+  display: grid;
+  min-width: 0;
+}
+.userName {
+  overflow: hidden;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.userStatus {
+  overflow: hidden;
+  color: var(--faint);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspaceMenu {
+  width: 252px;
+}
+.profileMenu {
+  width: 248px;
+}
+.profileHead {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 8px 9px 9px;
+}
+.profileIdentity {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+.profileName {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  line-height: 1.3;
+}
+.profileName span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.profileMeta {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- */
+/* Rail                                                              */
+/* ---------------------------------------------------------------- */
+
+.switcherText,
+.sectionText,
+.sectionCount,
+.name,
+.shortcut,
+.composerField,
+.composerNote,
+.storage,
+.userText,
+.searchClip,
+.emptyBody {
+  transition:
+    opacity var(--duration-standard) var(--ease-enter) 100ms,
+    translate var(--duration-standard) var(--ease-enter) 100ms;
+}
+.chevron,
+.rowChevron {
+  transition:
+    color var(--duration-fast) var(--ease-standard),
+    opacity var(--duration-standard) var(--ease-enter) 100ms,
+    translate var(--duration-standard) var(--ease-enter) 100ms,
+    transform var(--duration-spring) var(--ease-spring);
+}
+.sidebar[data-rail] :is(
+    .switcherText,
+    .chevron,
+    .sectionText,
+    .sectionCount,
+    .name,
+    .shortcut,
+    .composerField,
+    .composerNote,
+    .storage,
+    .userText,
+    .searchClip,
+    .emptyBody,
+    .rowChevron
+  ) {
+  opacity: 0;
+  translate: -6px 0;
+  pointer-events: none;
+  transition:
+    color var(--duration-fast) var(--ease-standard),
+    opacity 140ms var(--ease-standard),
+    translate 140ms var(--ease-standard);
+}
+
+/* Rail marks, the section hairlines and held dots, arrive once the labels
+   have cleared and leave first when the rail opens. */
+.divider,
+.dot[data-held] {
+  opacity: 0;
+  transition:
+    opacity 100ms var(--ease-standard),
+    scale 100ms var(--ease-standard);
+}
+.divider {
+  scale: 0.3 1;
+}
+.dot[data-held] {
+  scale: 0.3;
+}
+.sidebar[data-rail] :is(.divider, .dot[data-held]) {
+  opacity: 1;
+  scale: 1;
+  transition:
+    opacity 200ms var(--ease-enter) 160ms,
+    scale 360ms var(--ease-spring) 160ms;
+}
+
+/* In the rail the switcher keeps only its 32px mark: the text and chevron
+   leave the grid so their tracks cannot widen the header past the rail, and
+   the toggle stays on the rail's icon axis. */
+.sidebar[data-rail] .switcher {
+  grid-template-columns: 32px;
+  gap: 0;
+  padding: 6px 4px;
+}
+.sidebar[data-rail] .switcherText,
+.sidebar[data-rail] .chevron {
+  position: absolute;
+  pointer-events: none;
+}
+.sidebar[data-rail] .user {
+  grid-template-columns: 36px;
+  gap: 0;
+  padding: 4px 2px;
+}
+.sidebar[data-rail] .userText,
+.sidebar[data-rail] .user .chevron {
+  position: absolute;
+  pointer-events: none;
+}
+.sidebar[data-rail] .actions {
+  display: none;
+}
+.sidebar[data-rail] .row {
+  padding-right: 10px;
+}
+.sidebar[data-rail] .item[data-lifted] {
+  background: transparent;
+  box-shadow: none;
+}
+.sidebar[data-rail] .children {
+  display: none;
+}
+.sidebar[data-rail] .sectionTitle {
+  height: 17px;
+}
+.sidebar[data-rail] .composerTrigger {
+  inset: 0;
+}
+
+/* ---------------------------------------------------------------- */
+/* Rail tips                                                         */
+/* ---------------------------------------------------------------- */
+
+.tip {
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: var(--radius-control);
+  padding: 6px 12px;
+  background: var(--foreground);
+  color: var(--background);
+  box-shadow: var(--shadow-raised);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  letter-spacing: var(--tracking-body);
+  line-height: var(--leading-body);
+  white-space: nowrap;
+  transition:
+    opacity var(--duration-fast) var(--ease-enter),
+    transform var(--duration-fast) var(--ease-enter);
+}
+.tipNote {
+  color: color-mix(in oklab, var(--background) 62%, var(--foreground));
+  font-weight: 400;
+}
+.tip kbd {
+  display: inline-grid;
+  min-width: 20px;
+  height: 20px;
+  place-items: center;
+  border: 1px solid color-mix(in oklab, var(--background) 30%, var(--foreground));
+  border-radius: 6px;
+  padding: 0 5px;
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  font-weight: 400;
+  line-height: 1;
+}
+@starting-style {
+  .tip[data-state$="-open"] {
+    opacity: 0;
+    transform: translateX(-4px);
+  }
+  .tip[data-side="bottom"][data-state$="-open"] {
+    transform: translateY(-4px);
+  }
+  .tip[data-state="instant-open"] {
+    transform: none;
+  }
+}
+.tip[data-state="closed"] {
+  opacity: 0;
+  transform: translateX(-2px);
+  transition-duration: 110ms;
+  animation: tip-exit 110ms linear both;
+}
+.tip[data-side="bottom"][data-state="closed"] {
+  transform: translateY(-2px);
+}
+@keyframes tip-exit {
+  to {
+    --tip-exit: 1;
+  }
+}
+
+/* ---------------------------------------------------------------- */
+/* Hover, touch, and phones                                          */
+/* ---------------------------------------------------------------- */
+
+@media (hover: hover) and (pointer: fine) {
+  .switcher:hover,
+  .row:hover {
+    background: var(--row-hover);
+  }
+  .row:hover {
+    color: var(--foreground);
+  }
+  .row:hover .lead {
+    color: var(--text-secondary);
+  }
+  .row[aria-current="page"]:hover {
+    background: transparent;
+  }
+  .row[aria-current="page"]:hover .lead {
+    color: var(--primary);
+  }
+  .composer[data-state="idle"]:hover {
+    background: var(--row-hover);
+    color: var(--text-secondary);
+  }
+  .search div:has(> input):hover:not(:focus-within) {
+    border-color: var(--border-strong);
+  }
+  .user:hover {
+    background: var(--row-hover);
+  }
+  .toggle:hover {
+    background: var(--row-hover);
+    color: var(--foreground);
+  }
+}
+
+.row:focus-visible,
+.switcher:focus-visible,
+.toggle:focus-visible,
+.user:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+/* A menu choice made with the pointer returns focus without the keyboard ring;
+   the next blur or key press restores it. */
+.switcher[data-pointer-focus]:focus-visible,
+.user[data-pointer-focus]:focus-visible {
+  outline: none;
+}
+
+@media (pointer: coarse) {
+  .sidebar {
+    --row: 40px;
+  }
+  .searchClip {
+    margin-right: 48px;
+  }
+  .search div:has(> input) {
+    min-height: 40px;
+  }
+  .toggle {
+    right: -1px;
+    width: 40px;
+    height: 40px;
+    margin-top: -20px;
+  }
+  .actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+/* The fixed opener is part of the shell below 640px. */
+.opener {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 30;
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  box-shadow: var(--shadow-resting);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard);
+}
+.opener:active {
+  background: var(--surface-active);
+  color: var(--foreground);
+}
+.opener:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: color-mix(in oklab, #000 28%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  -webkit-tap-highlight-color: transparent;
+}
+:global(:root[data-theme="dark"]) .backdrop {
+  background: color-mix(in oklab, #000 52%, transparent);
+}
+.backdrop[data-open] {
+  pointer-events: auto;
+}
+
+.sheet {
+  position: fixed;
+  top: max(8px, env(safe-area-inset-top));
+  bottom: max(8px, env(safe-area-inset-bottom));
+  left: max(8px, env(safe-area-inset-left));
+  z-index: 41;
+  display: flex;
+  width: min(304px, calc(100vw - 40px));
+  outline: 0;
+  visibility: hidden;
+  touch-action: pan-y;
+  will-change: transform;
+}
+.sheet[data-shown] {
+  visibility: visible;
+}
+.sidebar[data-placement="drawer"] {
+  width: 100%;
+  height: 100%;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-floating);
+}
+
+@media (min-width: 640px) {
+  .opener {
+    display: none;
+  }
+}
+@media (max-width: 639px) {
+  .inline {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .opener,
+  .tip {
+    background: var(--surface);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .switcher,
+  .chevron,
+  .row,
+  .rowChevron,
+  .lead,
+  .name,
+  .dot,
+  .composer,
+  .fill,
+  .user,
+  .toggle,
+  .opener,
+  .actions {
+    transition: none;
+  }
+  /* The rail keeps its fades but nothing travels, and the width changes at once. */
+  .switcherText,
+  .sectionText,
+  .sectionCount,
+  .name,
+  .shortcut,
+  .composerField,
+  .composerNote,
+  .storage,
+  .userText,
+  .searchClip,
+  .emptyBody,
+  .chevron,
+  .rowChevron,
+  .divider,
+  .dot[data-held],
+  .sidebar[data-rail] :is(
+      .switcherText,
+      .chevron,
+      .sectionText,
+      .sectionCount,
+      .name,
+      .shortcut,
+      .composerField,
+      .composerNote,
+      .storage,
+      .userText,
+      .searchClip,
+      .emptyBody,
+      .divider,
+      .rowChevron,
+      .dot[data-held]
+    ) {
+    translate: none;
+    scale: none;
+    transition: opacity 120ms linear;
+  }
+  .tip,
+  .tip[data-state="closed"],
+  .tip[data-side="bottom"][data-state="closed"] {
+    transform: none;
+    transition: opacity 90ms linear;
+  }
+}

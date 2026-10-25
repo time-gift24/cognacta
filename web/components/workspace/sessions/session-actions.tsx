@@ -1,36 +1,53 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Archive, Edit, MoreHorizontal, Trash } from "@/components/icons";
+import {
+  Archive,
+  Edit,
+  Folder,
+  MoreHorizontal,
+  Pin,
+  Trash,
+} from "@/components/icons";
 import { DeleteConfirmationModal } from "@/components/delete-confirmation-modal";
 import { NameDialog } from "@/components/name-dialog";
 import {
-  AnimatedDropdown,
-  AnimatedDropdownContent,
-  AnimatedDropdownItem,
-  AnimatedDropdownItemIcon,
-  AnimatedDropdownItemText,
-  AnimatedDropdownTrigger,
-} from "@/components/premium/animated-dropdown";
+  Menu,
+  MenuContent,
+  MenuItem,
+  MenuRadioGroup,
+  MenuRadioItem,
+  MenuSeparator,
+  MenuSub,
+  MenuSubContent,
+  MenuSubTrigger,
+  MenuTrigger,
+} from "@/components/arc/menu/menu";
 import { useSessions } from "../session-provider";
 import type { Session } from "../types";
-import { SessionProjectMenu } from "./session-project-menu";
 
 export function SessionActions({
   session,
   active,
+  pinned,
+  onTogglePin,
 }: {
   session: Session;
   active: boolean;
+  pinned?: boolean;
+  onTogglePin?: () => void;
 }) {
-  const { update, remove, moveToProject, ready } = useSessions();
+  const { update, remove, moveToProject, projects, ready } = useSessions();
   const router = useRouter();
   const t = useTranslations("Chat");
+  const tNav = useTranslations("Nav");
+  const tProjects = useTranslations("Projects");
   const tDialog = useTranslations("Dialog");
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
 
   function deleteSession() {
     setDeleteOpen(false);
@@ -40,60 +57,90 @@ export function SessionActions({
 
   return (
     <>
-      {/* Non-modal menus avoid competing focus locks with the confirmation dialog. */}
-      <AnimatedDropdown modal={false}>
-        <AnimatedDropdownTrigger asChild>
+      <Menu modal={false}>
+        <MenuTrigger asChild>
           <button
+            ref={trigger}
             type="button"
             disabled={!ready}
             aria-label={t("moreActions", { title: session.title })}
-            className="grid size-8 place-items-center rounded-md hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary [@media(pointer:coarse)]:size-10"
+            className="grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-surface-active hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary [@media(pointer:coarse)]:size-10"
           >
             <MoreHorizontal className="size-4" />
           </button>
-        </AnimatedDropdownTrigger>
-        <AnimatedDropdownContent
+        </MenuTrigger>
+        <MenuContent
           side="bottom"
           align="start"
-          className="w-48 min-w-0"
+          sideOffset={6}
+          className="min-w-48"
         >
-          <AnimatedDropdownItem onSelect={() => setRenameOpen(true)}>
-            <AnimatedDropdownItemIcon>
-              <Edit />
-            </AnimatedDropdownItemIcon>
-            <AnimatedDropdownItemText>{t("rename")}</AnimatedDropdownItemText>
-          </AnimatedDropdownItem>
-          <SessionProjectMenu
-            projectId={session.projectId}
-            onMove={(projectId) => moveToProject(session.id, projectId)}
-          />
-          <AnimatedDropdownItem
+          <MenuItem
+            icon={<Edit className="size-4" />}
+            onSelect={() => setRenameOpen(true)}
+          >
+            {t("rename")}
+          </MenuItem>
+          {onTogglePin ? (
+            <MenuItem
+              icon={<Pin className="size-4" />}
+              onSelect={onTogglePin}
+            >
+              {pinned ? tNav("unpinSession") : tNav("pinSession")}
+            </MenuItem>
+          ) : null}
+          <MenuSub>
+            <MenuSubTrigger icon={<Folder className="size-4" />}>
+              {session.projectId ? tProjects("moveTo") : tProjects("addTo")}
+            </MenuSubTrigger>
+            <MenuSubContent className="min-w-52">
+              {!projects.length ? (
+                <MenuItem onSelect={() => router.push("/projects")}>
+                  {tProjects("createFirst")}
+                </MenuItem>
+              ) : null}
+              <MenuRadioGroup
+                value={session.projectId ?? ""}
+                onValueChange={(value) =>
+                  moveToProject(session.id, value || undefined)
+                }
+              >
+                {projects.map((project) => (
+                  <MenuRadioItem key={project.id} value={project.id}>
+                    {project.title}
+                  </MenuRadioItem>
+                ))}
+                {session.projectId ? (
+                  <MenuRadioItem value="">
+                    {tProjects("removeFrom")}
+                  </MenuRadioItem>
+                ) : null}
+              </MenuRadioGroup>
+            </MenuSubContent>
+          </MenuSub>
+          <MenuItem
+            icon={<Archive className="size-4" />}
             onSelect={() => update(session.id, { archived: !session.archived })}
           >
-            <AnimatedDropdownItemIcon>
-              <Archive />
-            </AnimatedDropdownItemIcon>
-            <AnimatedDropdownItemText>
-              {session.archived ? t("restore") : t("archive")}
-            </AnimatedDropdownItemText>
-          </AnimatedDropdownItem>
-          <AnimatedDropdownItem
+            {session.archived ? t("restore") : t("archive")}
+          </MenuItem>
+          <MenuSeparator />
+          <MenuItem
+            icon={<Trash className="size-4" />}
             destructive
             onSelect={() => setDeleteOpen(true)}
           >
-            <AnimatedDropdownItemIcon>
-              <Trash />
-            </AnimatedDropdownItemIcon>
-            <AnimatedDropdownItemText>{t("delete")}</AnimatedDropdownItemText>
-          </AnimatedDropdownItem>
-        </AnimatedDropdownContent>
-      </AnimatedDropdown>
+            {t("delete")}
+          </MenuItem>
+        </MenuContent>
+      </Menu>
       <DeleteConfirmationModal
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
         itemName={session.title}
         itemType="chat"
         onConfirm={deleteSession}
+        returnFocus={trigger}
       />
       <NameDialog
         open={renameOpen}
@@ -102,6 +149,7 @@ export function SessionActions({
         description={tDialog("renameChatDesc")}
         initialValue={session.title}
         onSave={(title) => update(session.id, { title })}
+        returnFocus={trigger}
       />
     </>
   );

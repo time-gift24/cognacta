@@ -1,13 +1,9 @@
 "use client";
 
+import type { RefObject } from "react";
 import { useTranslations } from "next-intl";
-import { Trash } from "@/components/icons";
-import { Button } from "@/components/motion/button/base";
-import {
-  AnimatedModal,
-  AnimatedModalTitle,
-  AnimatedModalDescription,
-} from "@/components/motion/animated-modal";
+import { Button } from "@/components/arc/button/button";
+import { Dialog, DialogContent } from "@/components/arc/dialog/dialog";
 
 export function DeleteConfirmationModal({
   open,
@@ -17,6 +13,7 @@ export function DeleteConfirmationModal({
   itemType = "source",
   error,
   description,
+  returnFocus,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -25,6 +22,7 @@ export function DeleteConfirmationModal({
   itemType?: "source" | "chat" | "project";
   description?: string;
   error?: string;
+  returnFocus?: RefObject<HTMLElement | null>;
 }) {
   const t = useTranslations("Dialog");
   const titleKey =
@@ -39,41 +37,37 @@ export function DeleteConfirmationModal({
       : itemType === "project"
         ? "deleteProject"
         : "deleteSource";
+
   return (
-    <AnimatedModal
-      open={open}
-      onOpenChange={onOpenChange}
-      backdropClassName="bg-black/40 backdrop-blur-none"
-      panelClassName="max-w-sm rounded-2xl border border-border bg-background p-5"
-    >
-      <Trash className="mb-4 size-6 text-muted-foreground" />
-      <AnimatedModalTitle className="text-lg font-semibold">
-        {t(titleKey)}
-      </AnimatedModalTitle>
-      <AnimatedModalDescription className="mt-2 break-words text-sm leading-6 text-muted-foreground">
-        {description ?? t("deleteBody", { name: itemName })}
-      </AnimatedModalDescription>
-      {error && (
-        <p role="alert" className="mt-3 text-sm text-danger">
-          {error}
-        </p>
-      )}
-      <div className="mt-6 flex justify-end gap-2">
-        <Button
-          data-autofocus
-          variant="outline"
-          onClick={() => onOpenChange(false)}
-          className="h-10 focus-visible:outline-2 focus-visible:outline-primary"
-        >
-          {t("cancel")}
-        </Button>
-        <Button
-          onClick={onConfirm}
-          className="h-10 bg-danger-strong text-white hover:bg-danger-strong/90 focus-visible:outline-2 focus-visible:outline-danger"
-        >
-          {t(actionKey)}
-        </Button>
-      </div>
-    </AnimatedModal>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        title={t(titleKey)}
+        description={description ?? t("deleteBody", { name: itemName })}
+        closeLabel={t("close")}
+        onCloseAutoFocus={(event) => {
+          if (!returnFocus?.current?.isConnected) return;
+          event.preventDefault();
+          returnFocus.current.focus({ preventScroll: true });
+        }}
+      >
+        {error ? (
+          <p role="alert" className="mb-4 text-xs text-danger">
+            {error}
+          </p>
+        ) : null}
+        <div className="flex justify-end gap-2">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => onOpenChange(false)}
+          >
+            {t("cancel")}
+          </Button>
+          <Button type="button" variant="danger-solid" onClick={onConfirm}>
+            {t(actionKey)}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
