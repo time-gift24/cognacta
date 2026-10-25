@@ -1,6 +1,7 @@
 import type { MessageContext, Project, Session } from "./types";
 
-export const WORKSPACE_KEY = "cognacta.workspace.v2";
+export const WORKSPACE_KEY = "cognacta.workspace.v3";
+const LEGACY_WORKSPACE_KEY = "cognacta.workspace.v2";
 
 export type WorkspaceSeeds = {
   sessions: Session[];
@@ -35,6 +36,18 @@ function isSession(value: unknown): value is Session {
         typeof message.id === "number" &&
         typeof message.content === "string" &&
         (message.role === "user" || message.role === "assistant") &&
+        (message.status === undefined ||
+          message.status === "done" ||
+          message.status === "stopped" ||
+          message.status === "error") &&
+        (message.error === undefined || typeof message.error === "string") &&
+        (message.model === undefined || typeof message.model === "string") &&
+        (message.reasoning === undefined ||
+          typeof message.reasoning === "string") &&
+        (message.thoughtFor === undefined ||
+          typeof message.thoughtFor === "number") &&
+        (message.tools === undefined || Array.isArray(message.tools)) &&
+        (message.sources === undefined || Array.isArray(message.sources)) &&
         (message.context === undefined ||
           (Array.isArray(message.context) && message.context.every(isContext))),
     )
@@ -51,7 +64,9 @@ export function readWorkspace(
   storage: Storage,
   seeds: WorkspaceSeeds,
 ): WorkspaceSeeds {
-  const stored = storage.getItem(WORKSPACE_KEY);
+  const current = storage.getItem(WORKSPACE_KEY);
+  const legacy = current === null ? storage.getItem(LEGACY_WORKSPACE_KEY) : null;
+  const stored = current ?? legacy;
   if (!stored) return seeds;
 
   const data = JSON.parse(stored);
@@ -71,9 +86,20 @@ export function readWorkspace(
   )
     throw new Error("Duplicate workspace IDs");
 
+  // The v2 -> v3 migration adds the new rich demo threads once without
+  // discarding conversations that already exist in this browser.
+  const mergedSessions = legacy
+    ? [
+        ...sessions,
+        ...seeds.sessions.filter(
+          (seed) => !sessions.some((session) => session.id === seed.id),
+        ),
+      ]
+    : sessions;
+
   return {
     projects,
-    sessions: sessions.map((session) => ({
+    sessions: mergedSessions.map((session) => ({
       id: session.id,
       title: session.title,
       messages: session.messages,

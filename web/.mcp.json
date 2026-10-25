@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "arc": {
+      "url": "https://proxy.collectui.pro/api/arc-mcp",
+      "headers": {
+        "Authorization": "Bearer <YOUR_KEY>"
+      }
+    }
+  }
+}

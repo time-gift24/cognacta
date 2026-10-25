@@ -68,6 +68,7 @@ switch, and untouched demo content is re-seeded in the new language.
 - `app/` contains thin route entries and the root provider composition.
 - `components/workspace/session-provider.tsx` owns projects, sessions, and the demo response lifecycle.
 - `components/workspace/workspace-storage.ts` validates and migrates saved workspace data.
+- `components/workspace/mock-threads.ts` provides the bilingual multi-turn demo conversations with reasoning, tools, and sources.
 - `components/workspace/sessions/` contains session rows, actions, the project submenu, and archives.
 - `components/workspace/projects/` contains project management.
 - `components/workspace/knowledge-provider.tsx` shares saved sources between the library and composer.
@@ -75,7 +76,7 @@ switch, and untouched demo content is re-seeded in the new language.
 - `components/workspace/knowledge-base.tsx` contains the source list and editor.
 - `components/workspace/composer.tsx` adapts the Credits composer to workspace payloads.
 - `components/workspace/composer-context-menu.tsx` implements the plus menu and knowledge picker.
-- `components/workspace/conversation.tsx` renders beUI messages, scrolling, and source snapshots.
+- `components/workspace/arc-conversation.tsx` binds the uiarc AI chat thread to workspace sessions and the shared composer.
 - `components/name-dialog.tsx` and `delete-confirmation-modal.tsx` reuse the shared animated modal.
 - `components/form-fields.tsx` provides native Input and Textarea fields with shared theme, focus, and disabled styles. Search layouts add only radius and icon spacing.
 - `components/premium/agent-chat-input/` contains the reusable composer, not workspace storage logic.
@@ -100,7 +101,7 @@ switch, and untouched demo content is re-seeded in the new language.
 
 | Storage key | Contents |
 | --- | --- |
-| `cognacta.workspace.v2` | Projects and sessions, including message context |
+| `cognacta.workspace.v3` | Projects and sessions, including message context and rich reply metadata |
 | `cognacta.knowledge.v1` | Notes and reference links |
 | `cognacta.integrations.v1` | Simulated connected app IDs |
 | `cognacta.preferences.v1` | Response style and custom instructions |

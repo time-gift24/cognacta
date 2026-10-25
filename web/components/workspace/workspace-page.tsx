@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { useSessions } from "./session-provider";
-import { Conversation } from "./conversation";
+import { ArcConversation } from "./arc-conversation";
 import { EmptyWorkspace } from "./empty-workspace";
 import type { MessageContext } from "./types";
 
@@ -51,11 +51,10 @@ export function WorkspacePage({ sessionId }: { sessionId?: string }) {
     setWebEnabled: store.setWebEnabled,
   };
   return session ? (
-    <Conversation
+    <ArcConversation
       key={session.id}
-      title={session.title}
-      messages={session.messages}
-      {...composerProps}
+      session={session}
+      composer={composerProps}
     />
   ) : (
     <EmptyWorkspace onStarterClick={onSubmit} {...composerProps} />

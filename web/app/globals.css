@@ -1,4 +1,8 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 :root {
   color-scheme: dark;
@@ -22,6 +26,41 @@
   --danger-foreground: #ffffff;
   --card: var(--surface-raised);
   --card-foreground: var(--foreground);
+  --popover: var(--surface-raised);
+  --popover-foreground: var(--foreground);
+  --secondary: var(--surface-active);
+  --secondary-foreground: var(--foreground);
+  --destructive: var(--danger);
+  --destructive-foreground: var(--danger-foreground);
+  --input: var(--border-strong);
+  --ring: var(--primary);
+  --radius: 0.5rem;
+  /* uiarc / Arc design tokens mapped onto the Cognacta surface system. */
+  --font-body: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
+  --surface-muted: var(--surface-active);
+  --text-secondary: var(--muted-foreground);
+  --text-muted: var(--faint);
+  --border-subtle: var(--border);
+  --text-xl: 1.5rem;
+  --tracking-body: 0em;
+  --leading-body: 1.5;
+  --radius-control: 12px;
+  --radius-pill: 999px;
+  --accent-strong: var(--primary-strong);
+  --success: var(--primary);
+  --duration-instant: 120ms;
+  --duration-fast: 160ms;
+  --duration-spring: 260ms;
+  --ease-standard: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-enter: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
+  --shadow-floating: 0 18px 48px -20px rgb(0 0 0 / 0.45);
+  --shadow-raised: 0 8px 24px -12px rgb(0 0 0 / 0.35);
+  --series-1: #3ace93;
+  --series-2: #6fa8ff;
+  --series-3: #e8b45f;
+  --series-4: #b18cff;
+  --series-5: #ef7f8c;
   --glass-bg: oklch(20% 0.01 160 / 0.55);
   --glass-border: rgb(255 255 255 / 0.08);
   --glass-highlight: rgb(255 255 255 / 0.07);
@@ -83,16 +122,29 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-muted-foreground: var(--muted-foreground);
-  --color-popover: var(--surface-raised);
-  --color-popover-foreground: var(--foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
-  --color-ring: var(--primary);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
   --color-danger: var(--danger);
   --color-danger-strong: var(--danger-strong);
   --color-danger-foreground: var(--danger-foreground);
   --font-sans: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-heading: var(--font-sans);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
 @layer base {

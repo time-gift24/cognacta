@@ -17,6 +17,7 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
   const t = useTranslations("Nav");
   const params = useParams<{ sessionId?: string }>();
   const { mode, setMode, storageError } = useSessions();
+  const isChatSurface = pathname === "/" || pathname.startsWith("/chat/");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -86,7 +87,13 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
             {t("storageUnavailable")}
           </p>
         ) : null}
-        <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
+        <div
+          className={`min-h-0 flex-1 overflow-y-auto ${
+            isChatSurface ? "pt-14 lg:pt-0" : ""
+          }`}
+        >
+          {children}
+        </div>
       </section>
       <MobileSidebar
         {...sidebarProps}

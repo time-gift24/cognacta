@@ -10,14 +10,16 @@ import {
   type ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
-import { useTranslations } from "next-intl";
-import { projectSeeds, recentSeeds, replyKeys } from "./config";
+import { useLocale, useTranslations } from "next-intl";
+import { projectSeeds, recentSeeds } from "./config";
+import { createRichSessions } from "./mock-threads";
 import type { Mode, Session, Project, MessageContext } from "./types";
 
 import { readWorkspace, WORKSPACE_KEY } from "./workspace-storage";
 
 function useSessionStore() {
   const router = useRouter();
+  const locale = useLocale();
   const tDemo = useTranslations("Demo");
   const seedProjects = useMemo<Project[]>(
     () =>
@@ -28,6 +30,9 @@ function useSessionStore() {
     [tDemo],
   );
   const seedSessions = useMemo<Session[]>(() => {
+    const richSessions = createRichSessions(
+      locale.startsWith("en") ? "en" : "zh",
+    );
     const projectSessions = projectSeeds.map((project) => {
       const title = tDemo(`projects.${project.key}`);
       return {
@@ -61,12 +66,8 @@ function useSessionStore() {
         ],
       };
     });
-    return [...projectSessions, ...recentSessions];
-  }, [tDemo]);
-  const replies = useMemo(
-    () => replyKeys.map((key) => tDemo(`replies.${key}`)),
-    [tDemo],
-  );
+    return [...richSessions, ...projectSessions, ...recentSessions];
+  }, [locale, tDemo]);
   const [sessions, setSessions] = useState<Session[]>(seedSessions);
   const [projects, setProjects] = useState<Project[]>(seedProjects);
   const [ready, setReady] = useState(false);
@@ -75,28 +76,26 @@ function useSessionStore() {
   const [mode, setMode] = useState<Mode>("chat");
   const [model, setModel] = useState("claude-sonnet-5");
   const [webEnabled, setWebEnabled] = useState(false);
-  const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const canPersist = useRef(true);
   const dirty = useRef(false);
 
   useEffect(() => {
     try {
+      const hasCurrentWorkspace =
+        localStorage.getItem(WORKSPACE_KEY) !== null;
       const saved = readWorkspace(localStorage, {
         sessions: seedSessions,
         projects: seedProjects,
       });
       setProjects(saved.projects);
       setSessions(saved.sessions);
+      if (!hasCurrentWorkspace) dirty.current = true;
     } catch {
       // Do not overwrite unreadable saved work with demo defaults.
       canPersist.current = false;
       setStorageError(true);
     }
     setReady(true);
-    const activeTimers = timers.current;
-    return () => {
-      for (const timer of activeTimers.values()) clearTimeout(timer);
-    };
     // The seed is read once; locale changes reload the document.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -124,9 +123,33 @@ function useSessionStore() {
   }
 
   function stop(id: string) {
-    clearTimeout(timers.current.get(id));
-    timers.current.delete(id);
     setPending((items) => items.filter((item) => item !== id));
+  }
+
+  function beginReply(id: string) {
+    setPending((items) => (items.includes(id) ? items : [...items, id]));
+  }
+
+  function finishReply(id: string) {
+    setPending((items) => items.filter((item) => item !== id));
+  }
+
+  function syncMessages(id: string, messages: Session["messages"]) {
+    dirty.current = true;
+    setSessions((items) =>
+      items.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              title:
+                item.messages.length === 0
+                  ? (messages[0]?.content.slice(0, 48) ?? item.title)
+                  : item.title,
+              messages,
+            }
+          : item,
+      ),
+    );
   }
 
   function moveToProject(sessionId: string, projectId: string | undefined) {
@@ -210,8 +233,7 @@ function useSessionStore() {
     context: MessageContext[] = [],
   ) {
     const content = text.trim();
-    if (!content || !ready || (sessionId && timers.current.has(sessionId)))
-      return;
+    if (!content || !ready) return;
     const id = sessionId ?? crypto.randomUUID();
     dirty.current = true;
     const message = { id: Date.now(), role: "user" as const, content, context };
@@ -239,31 +261,7 @@ function useSessionStore() {
             ...items,
           ],
     );
-    setPending((items) => [...items, id]);
-    timers.current.set(
-      id,
-      setTimeout(() => {
-        setSessions((items) =>
-          items.map((item) =>
-            item.id === id
-              ? {
-                  ...item,
-                  messages: [
-                    ...item.messages,
-                    {
-                      id: message.id + 1,
-                      role: "assistant",
-                      content: replies[message.id % replies.length],
-                    },
-                  ],
-                }
-              : item,
-          ),
-        );
-        timers.current.delete(id);
-        setPending((items) => items.filter((item) => item !== id));
-      }, 950),
-    );
+    beginReply(id);
     if (!sessionId) router.push(`/chat/${id}`);
   }
 
@@ -282,6 +280,9 @@ function useSessionStore() {
     createProjectSession,
     send,
     stop,
+    beginReply,
+    finishReply,
+    syncMessages,
     mode,
     setMode,
     model,
