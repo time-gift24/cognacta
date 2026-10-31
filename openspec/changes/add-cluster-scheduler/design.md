@@ -1,3 +1,7 @@
+> **已作废（2026-10-31）**
+> `aa08967` 已删除旧 core 的 `Cluster` / `Run` / `Scheduler`、CLI `cluster-demo`、`cognacta-test` feature 及相关测试；本变更的调度、状态、路由、观测和演示契约整体失效。
+> 以下原文仅供历史追溯，不再作为实施、验收或架构重写依据；任务勾选和验证结果只反映当时状态。新的执行架构另建 change。
+
 # Design
 
 ## Context

@@ -1,3 +1,5 @@
+> **继续有效（2026-10-31）**：本规格仅约束保留的 Collector 独立运行时与 CLI 通用生命周期；场景使用标准 `tracing` 和 OpenTelemetry Metrics API 的通用测试 fixture，不依赖已删除的 core、provider 或业务命令，也不恢复旧 Generation 指标契约。
+
 # Spec Delta
 
 ## Purpose
@@ -10,9 +12,9 @@
 
 系统 SHALL 仅在程序入口显式初始化时启用自己的可观测运行资源，并在业务结束后统一关闭。一次初始化 SHALL 服务多次业务调用，不要求每次记录创建或关闭采集器。公共初始化和关闭入口 SHALL 返回可分类且保留实际错误来源的本库错误；重复初始化 SHALL 明确失败，不替换已有全局配置。
 
-#### Scenario: Many generations share one initialization
+#### Scenario: Many operations share one initialization
 
-- **WHEN** 程序初始化一次后执行多次 Generation
+- **WHEN** 测试 fixture 初始化一次后，多次产生 tracing 事件、span 和 OpenTelemetry 指标记录
 - **THEN** 每次调用均使用同一套运行资源，业务函数无需接收采集器对象或执行初始化、关闭
 
 #### Scenario: Initialization is attempted twice
@@ -26,8 +28,8 @@
 
 #### Scenario: Run the library without initialization
 
-- **WHEN** 一个未安装任何观测实现的进程直接运行正常或失败的模型调用
-- **THEN** 调用结果、错误和流事件仍按原契约返回，且没有遥测输出、外发请求或历史补发缓存
+- **WHEN** 一个未安装任何观测实现的进程运行正常或失败的通用测试操作，并调用标准 tracing 和 OpenTelemetry Metrics API
+- **THEN** 操作结果和错误仍按原契约返回，且没有遥测输出、外发请求或历史补发缓存
 
 ### Requirement: Local-only mode without remote configuration
 
@@ -44,7 +46,7 @@
 
 #### Scenario: Export to a compatible receiver
 
-- **WHEN** 配置有效的通用接收端点并完成一次有文本和用量的 Generation
+- **WHEN** 配置有效的通用接收端点，测试 fixture 产生 tracing 事件、结束 span 并记录 OpenTelemetry 指标
 - **THEN** 接收端分别收到日志、链路和指标，且本地 stderr 也能收到已启用级别的日志
 
 #### Scenario: Switch a compatible backend
@@ -58,8 +60,8 @@
 
 #### Scenario: Remote receiver stalls
 
-- **WHEN** 监控接收端持续不返回响应，而模型服务正常生成文本
-- **THEN** 模型文本仍可增量消费，业务调用不等待监控响应或队列空位
+- **WHEN** 监控接收端持续不返回响应，而测试 fixture 持续记录遥测并输出业务进度信号
+- **THEN** 业务进度仍可观察，操作不等待监控响应或队列空位
 
 #### Scenario: Standard error is blocked
 
@@ -68,12 +70,12 @@
 
 ### Requirement: Telemetry failure preserves business behavior
 
-监控连接失败、超时、拒绝写入和队列丢弃 SHALL 不转化为模型错误、不触发模型请求重试、不改变业务结果或退出码。导出失败诊断 SHALL 安全、限频并只走本地后台输出，避免把导出器自身故障再次发送到同一远程日志管线形成循环。
+监控连接失败、超时、拒绝写入和队列丢弃 SHALL 不转化为业务错误、不触发业务操作重试、不改变业务结果或退出码。导出失败诊断 SHALL 安全、限频并只走本地后台输出，避免把导出器自身故障再次发送到同一远程日志管线形成循环。
 
 #### Scenario: Receiver is unavailable
 
-- **WHEN** 遥测端点无法连接，而模型服务正常返回完成结果
-- **THEN** 业务仍成功，stderr 尽力给出安全诊断；允许丢失遥测数据，没有额外模型调用
+- **WHEN** 遥测端点无法连接，而测试 fixture 的业务操作正常完成
+- **THEN** 业务仍成功，stderr 尽力给出安全诊断；允许丢失遥测数据，没有额外业务操作
 
 ### Requirement: Invalid telemetry configuration degrades explicitly
 
@@ -95,7 +97,7 @@
 
 #### Scenario: Short process exits before periodic export
 
-- **WHEN** 程序产生一次有效调用后，在周期导出前正常退出，接收端可用
+- **WHEN** 测试 fixture 产生 tracing 事件、结束 span 并记录 OpenTelemetry 指标后，在周期导出前正常退出，接收端可用
 - **THEN** 关闭阶段尝试导出剩余三类信号，已完成的数据不会只因未到定时周期而被忽略
 
 #### Scenario: All outputs are stalled at shutdown
@@ -109,8 +111,8 @@
 
 #### Scenario: Suppress informational logs and sampled traces
 
-- **WHEN** 日志级别设为 warn，链路采样关闭，并执行一次成功调用
-- **THEN** 指标仍完整统计该调用，且不要求通过日志解析重建指标
+- **WHEN** 日志级别设为 warn，链路采样关闭，测试 fixture 使用 OpenTelemetry Metrics API 记录一次计数
+- **THEN** 指标仍完整保留该计数，且不要求通过日志解析重建指标
 
 ### Requirement: Diagnostics do not expose credentials
 

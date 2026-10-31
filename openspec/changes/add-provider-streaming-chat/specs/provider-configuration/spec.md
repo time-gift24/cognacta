@@ -1,3 +1,7 @@
+> **已作废（2026-10-31）**
+> `aa08967` 已删除 `cognacta-core`、`cognacta-provider`、CLI `chat` 及其配置示例和测试；本变更规定的旧接口、配置、实现与验收方案整体失效。
+> 以下原文仅供历史追溯，不再作为实施、验收或架构重写依据；任务勾选和验证结果只反映当时状态。需要重新接入模型时另建 change。
+
 ## ADDED Requirements
 
 ### Requirement: Reachable crate public API

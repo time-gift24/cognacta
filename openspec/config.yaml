@@ -1,5 +1,12 @@
 schema: spec-driven
 
+context: |
+  2026-10-31：旧 core/provider 架构已在 aa08967 中移除，当前进行架构重写。
+  add-provider-streaming-chat、add-cluster-scheduler、add-client-chat-interface 全部作废，仅供历史追溯。
+  add-observability-collector 部分作废：generation-observability 与旧 core/provider/chat 集成失效，独立 observability-runtime 及 CLI 通用初始化/关闭契约继续有效。
+  具体有效范围以各文档顶部的状态说明为准；已作废内容中的任务勾选、验证记录与 SHALL 条款不表示当前能力或重写要求。
+  不执行作废任务，不将作废 delta 同步为正式规格；新的业务架构与接口通过新的 change 设计。
+
 # Project context (optional)
 # This is shown to AI when creating artifacts.
 # Add your tech stack, conventions, style guides, domain knowledge, etc.

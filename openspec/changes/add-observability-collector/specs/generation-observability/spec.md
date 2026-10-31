@@ -1,3 +1,6 @@
+> **已作废（2026-10-31）**：`aa08967` 已删除旧 core、provider 及 CLI 业务命令，本规格依赖的 Model／Protocol／Generation／Usage 业务边界已不存在。
+> 全文仅留作历史，不再作为实施或验收依据，不约束架构重写；相关历史任务勾选不表示当前仍具备这些能力。Collector 独立运行时契约继续见 `observability-runtime`。
+
 # Spec Delta
 
 ## Purpose
