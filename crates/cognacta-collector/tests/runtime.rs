@@ -1,11 +1,5 @@
 mod support;
 use cognacta_collector::{Collector, Error};
-use cognacta_core::{
-    AssistantMessage, EventStream, Finish, FinishReason, GenerationEvent, GenerationMetadata,
-    GenerationRequest, GenerationResponse, InputPart, Message, Model, PartDelta, Protocol,
-    Provider, Usage,
-};
-use futures_util::{StreamExt, stream};
 use opentelemetry_proto::tonic::{
     collector::{
         logs::v1::ExportLogsServiceRequest, metrics::v1::ExportMetricsServiceRequest,
@@ -17,55 +11,9 @@ use prost::Message as _;
 use std::{
     io::{BufRead, BufReader, Write},
     process::{Command, Stdio},
-    sync::Arc,
     time::{Duration, Instant},
 };
 use support::*;
-
-struct Echo;
-#[async_trait::async_trait]
-impl Protocol for Echo {
-    fn name(&self) -> &'static str {
-        "test.echo"
-    }
-    async fn generate(
-        &self,
-        p: &Provider,
-        m: &str,
-        _: GenerationRequest,
-    ) -> Result<GenerationResponse, cognacta_core::Error> {
-        Ok(GenerationResponse::new(
-            AssistantMessage::text("SECRET_REPLY"),
-            Finish::new(FinishReason::Stop, None),
-            Usage::builder().input_tokens(0).output_tokens(10).build(),
-            GenerationMetadata::builder()
-                .provider_name(p.name())
-                .protocol_name(self.name())
-                .requested_model(m)
-                .request_id("upstream-42")
-                .build(),
-        ))
-    }
-    async fn stream(
-        &self,
-        p: &Provider,
-        m: &str,
-        r: GenerationRequest,
-    ) -> Result<EventStream, cognacta_core::Error> {
-        let response = self.generate(p, m, r).await?;
-        Ok(Box::pin(stream::iter(vec![
-            Ok(GenerationEvent::Started(response.metadata().clone())),
-            Ok(GenerationEvent::Delta {
-                part: 0,
-                delta: PartDelta::Text("SECRET_REPLY".into()),
-            }),
-            Ok(GenerationEvent::Usage(
-                Usage::builder().output_tokens(5).build(),
-            )),
-            Ok(GenerationEvent::Completed(response)),
-        ])))
-    }
-}
 
 #[test]
 fn child() {
@@ -110,28 +58,17 @@ fn child() {
             Err(Error::AlreadyInitialized { .. })
         ));
     }
-    let model = Model::new(
-        Arc::new(Provider::new("fixture-provider", "http://example.test").unwrap()),
-        "fixture-model",
-        Arc::new(Echo),
-    )
-    .unwrap();
-    tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .unwrap()
-        .block_on(async {
-            let request = GenerationRequest::new(vec![Message::User(vec![InputPart::Text(
-                "SECRET_PROMPT".into(),
-            )])])
-            .unwrap();
-            let mut events = model.stream(request).await.unwrap();
-            while let Some(event) = events.next().await {
-                let event = event.unwrap();
-                if mode == "cancel" && matches!(event, GenerationEvent::Delta { .. }) {
-                    break;
-                }
-            }
+    let meter = opentelemetry::global::meter("fixture");
+    let calls = meter.u64_counter("fixture.calls").build();
+    let duration = meter
+        .f64_histogram("fixture.duration")
+        .with_unit("s")
+        .build();
+    tracing::info_span!(target: "cognacta_collector::fixture", "fixture", request_id = "fixture-request")
+        .in_scope(|| {
+            tracing::info!(target: "cognacta_collector::fixture", event = "fixture.completed", "fixture completed");
+            calls.add(1, &[]);
+            duration.record(0.01, &[]);
         });
     if mode == "cardinality" {
         let counter = opentelemetry::global::meter("fixture")
@@ -144,7 +81,7 @@ fn child() {
     if mode == "backpressure" {
         let text = "x".repeat(1024);
         for _ in 0..10000 {
-            tracing::warn!(target:"cognacta_core", padding=text, "pressure");
+            tracing::warn!(target:"cognacta_collector::fixture", padding=text, "pressure");
         }
         println!("business-progress");
         std::io::stdout().flush().unwrap();
@@ -201,7 +138,7 @@ fn no_init_local_conflict_invalid_and_drop_contracts() {
         let output = run(mode, &[]);
         assert!(String::from_utf8_lossy(&output.stdout).contains("business-done"));
         if !matches!(mode, "drop" | "zero") {
-            assert!(String::from_utf8_lossy(&output.stderr).contains("generation.completed"));
+            assert!(String::from_utf8_lossy(&output.stderr).contains("fixture.completed"));
         }
     }
     let output = run("host", &[]);
@@ -222,7 +159,7 @@ fn no_init_local_conflict_invalid_and_drop_contracts() {
     assert!(receiver.requests.try_recv().is_err());
 }
 #[test]
-fn exports_three_signals_with_correlation_usage_and_bounded_attributes() {
+fn exports_three_signals_with_correlation_and_bounded_attributes() {
     let receiver = Receiver::new(false, None);
     let output = run(
         "cardinality",
@@ -244,7 +181,6 @@ fn exports_three_signals_with_correlation_usage_and_bounded_attributes() {
     let mut metrics = vec![];
     for request in &requests {
         assert!(request.headers.contains("SECRET_TELEMETRY"));
-        assert!(!request.headers.contains("SECRET_MODEL_KEY"));
         match request.path.as_str() {
             "/v1/logs" => {
                 for resource in ExportLogsServiceRequest::decode(request.body.as_slice())
@@ -284,33 +220,14 @@ fn exports_three_signals_with_correlation_usage_and_bounded_attributes() {
     }
     assert!(!logs.is_empty());
     assert_eq!(spans.len(), 1);
-    assert_eq!(spans[0].name, "generation");
+    assert_eq!(spans[0].name, "fixture");
     assert!(
         logs.iter()
             .all(|log| log.trace_id == spans[0].trace_id && log.span_id == spans[0].span_id)
     );
-    for name in [
-        "started",
-        "finished",
-        "in_flight",
-        "duration",
-        "time_to_first_text",
-        "tokens",
-        "usage_reports",
-    ] {
-        assert!(
-            metrics
-                .iter()
-                .any(|m| m.name == format!("cognacta.generation.{name}")),
-            "missing {name}"
-        );
-    }
     assert!(!metrics.iter().any(|m| m.name == "before.calls"));
-    let tokens = metrics
-        .iter()
-        .find(|m| m.name == "cognacta.generation.tokens")
-        .unwrap();
-    let Some(Data::Sum(sum)) = &tokens.data else {
+    let calls = metrics.iter().find(|m| m.name == "fixture.calls").unwrap();
+    let Some(Data::Sum(sum)) = &calls.data else {
         panic!("sum expected")
     };
     assert_eq!(
@@ -321,8 +238,19 @@ fn exports_three_signals_with_correlation_usage_and_bounded_attributes() {
                 _ => panic!("integer expected"),
             })
             .sum::<i64>(),
-        10
+        1
     );
+    let duration = metrics
+        .iter()
+        .find(|m| m.name == "fixture.duration")
+        .unwrap();
+    assert_eq!(duration.unit, "s");
+    let Some(Data::Histogram(histogram)) = &duration.data else {
+        panic!("histogram expected")
+    };
+    assert_eq!(histogram.data_points.len(), 1);
+    assert_eq!(histogram.data_points[0].count, 1);
+    assert_eq!(histogram.data_points[0].sum, Some(0.01));
     let cardinality = metrics
         .iter()
         .find(|m| m.name == "fixture.cardinality")
@@ -345,10 +273,8 @@ fn exports_three_signals_with_correlation_usage_and_bounded_attributes() {
         "{logs:?}{spans:?}{metrics:?}{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    for secret in ["SECRET_PROMPT", "SECRET_REPLY", "SECRET_TELEMETRY"] {
-        assert!(!dump.contains(secret), "leaked {secret}");
-    }
-    assert!(!format!("{metrics:?}").contains("upstream-42"));
+    assert!(!dump.contains("SECRET_TELEMETRY"));
+    assert!(!format!("{metrics:?}").contains("fixture-request"));
 }
 #[test]
 fn filters_and_sampling_do_not_reduce_metrics() {
@@ -371,10 +297,7 @@ fn filters_and_sampling_do_not_reduce_metrics() {
         {
             for scope in resource.scope_metrics {
                 for metric in scope.metrics {
-                    if matches!(
-                        metric.name.as_str(),
-                        "cognacta.generation.started" | "cognacta.generation.finished"
-                    ) {
+                    if metric.name == "fixture.calls" {
                         let Some(Data::Sum(sum)) = metric.data else {
                             panic!("sum expected")
                         };
@@ -503,41 +426,4 @@ fn stalled_network_and_stderr_do_not_block_business_or_extend_total_shutdown() {
     let lines: Vec<_> = rx.try_iter().collect();
     assert!(lines.iter().any(|l| l == "business-done"));
     assert!(lines.iter().all(|l| !l.contains("Failed to send shutdown")));
-}
-
-#[test]
-fn cancelled_stream_exports_one_cancelled_terminal() {
-    let receiver = Receiver::new(false, None);
-    run(
-        "cancel",
-        &[("OTEL_EXPORTER_OTLP_ENDPOINT", &receiver.endpoint)],
-    );
-    let mut found = false;
-    for request in receiver
-        .requests
-        .try_iter()
-        .filter(|r| r.path == "/v1/metrics")
-    {
-        for resource in ExportMetricsServiceRequest::decode(request.body.as_slice())
-            .unwrap()
-            .resource_metrics
-        {
-            for scope in resource.scope_metrics {
-                for metric in scope.metrics {
-                    if metric.name == "cognacta.generation.finished" {
-                        let Some(Data::Sum(sum)) = metric.data else {
-                            panic!("sum expected")
-                        };
-                        assert_eq!(sum.data_points.len(), 1);
-                        assert_eq!(sum.data_points[0].value, Some(Value::AsInt(1)));
-                        assert!(
-                            format!("{:?}", sum.data_points[0].attributes).contains("cancelled")
-                        );
-                        found = true;
-                    }
-                }
-            }
-        }
-    }
-    assert!(found);
 }

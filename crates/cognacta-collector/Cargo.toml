@@ -28,8 +28,3 @@ bytes.workspace = true
 percent-encoding.workspace = true
 opentelemetry-proto.workspace = true
 prost.workspace = true
-
-[dev-dependencies]
-cognacta-core.workspace = true
-futures-util.workspace = true
-tokio.workspace = true
