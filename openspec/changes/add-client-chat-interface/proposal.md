@@ -39,4 +39,4 @@
 - 新增注册表组件来源：shadcn 官方 base 注册表（`message-scroller`、`message`、`bubble`、`trace`、`badge`、`code-block`、`input-group` 等）与 beui-pro 付费注册表（`agent-chat-creative`、`ai-thinking-loader`，令牌在 `web/.env.local`）。
 - 新增运行期依赖预计包括 Streamdown（Markdown 流式渲染）及组件带入的依赖；具体版本在实施时按工程现状确认。
 - DTO 字段对齐 `cognacta-core` 的 `GenerationEvent` / `GenerationResponse` / `Usage` / `GenerationMetadata`，但前端类型独立演进；后端契约变更只影响网关适配层。
-- 本轮不接真实后端、不做会话列表与多 agent 切换（归后续 change）；设计文档 `docs/design/llm-provider-interface.md` 与 `add-provider-streaming-chat` 继续作为后端背景。
+- 历史范围不接真实后端、不做会话列表与多 agent 切换；当时参考的 LLM 接口设计已随 `docs/` 删除，`add-provider-streaming-chat` 也已作废，不再作为后端依据。

@@ -4,7 +4,7 @@
 
 ## Context
 
-当前 `cognacta-core` 只有基础函数，`cognacta-cli` 只打印版本。`docs/design/llm-provider-interface.md` 已约定 Provider / Model / Protocol、`dyn Trait + async_trait`、reqwest 和鉴权注入，但尚无实现。本 change 按最新要求修正错误及配置契约，并规划一个可交互验证的流式文本切片。
+历史背景：当时 `cognacta-core` 只有基础函数，`cognacta-cli` 只打印版本。旧 LLM 接口设计曾约定 Provider / Model / Protocol、`dyn Trait + async_trait`、reqwest 和鉴权注入；该设计已随 `docs/` 删除。本 change 的错误、配置与流式文本方案也已作废，仅保留历史记录。
 
 本轮只更新 OpenSpec 产物，并按用户明确授权在 `AGENTS.md` 增加 crate 对外接口设计准则，不写 Rust 实现。后续实现以本 change 的规格为验收边界，既有文档中的工具、图像、推理、原生回放与非流式验收不自动并入本 change；已有设计目标也不因此被删除。`CONTEXT.md` 和既有设计文档保持不变。
 
