@@ -7,9 +7,25 @@ use std::{
 
 use clap::Parser;
 
+#[cfg(feature = "dev")]
+mod graph_check;
+
 #[derive(Debug, Parser)]
 #[command(version, about = "Cognacta command line")]
-struct Cli {}
+struct Cli {
+    #[cfg(feature = "dev")]
+    #[command(subcommand)]
+    command: Option<Command>,
+}
+
+#[cfg(feature = "dev")]
+#[derive(Debug, clap::Subcommand)]
+enum Command {
+    GraphCheck {
+        #[arg(value_enum)]
+        scenario: graph_check::Scenario,
+    },
+}
 
 #[derive(Debug, thiserror::Error)]
 enum Error {
@@ -19,6 +35,12 @@ enum Error {
     Arguments(#[from] clap::Error),
     #[error("终端 I/O 失败: {0}")]
     Io(#[from] std::io::Error),
+    #[cfg(feature = "dev")]
+    #[error("graph execution failed: {0}")]
+    Core(#[from] cognacta_core::Error),
+    #[cfg(feature = "dev")]
+    #[error("graph-check acceptance failed")]
+    CheckFailed,
 }
 
 fn main() -> ExitCode {
@@ -79,7 +101,15 @@ fn report_error(error: Error) -> ExitCode {
 }
 
 fn run() -> Result<(), Error> {
+    #[cfg(not(feature = "dev"))]
     Cli::try_parse()?;
+    #[cfg(feature = "dev")]
+    let cli = Cli::try_parse()?;
+    #[cfg(feature = "dev")]
+    if let Some(Command::GraphCheck { scenario }) = cli.command {
+        let runtime = tokio::runtime::Builder::new_current_thread().build()?;
+        return runtime.block_on(graph_check::run(scenario, &mut std::io::stdout().lock()));
+    }
     writeln!(
         std::io::stdout().lock(),
         "cognacta {}",

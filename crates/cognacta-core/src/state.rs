@@ -1,0 +1,147 @@
+use std::{cmp::Ordering, collections::HashMap, hash::Hash};
+
+use crate::{Error, MergeError};
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum WritePolicy {
+    SingleWriter,
+    MultiWriter,
+}
+
+#[derive(Debug)]
+pub struct StateField<F> {
+    pub id: F,
+    pub name: &'static str,
+    pub policy: WritePolicy,
+}
+
+pub trait State: Send + Sync + 'static {
+    type Delta: Default + Send + 'static;
+    type Field: Copy + Eq + Hash + Send + Sync + 'static;
+
+    fn fields() -> &'static [StateField<Self::Field>];
+    fn merge_batch(&mut self, deltas: Vec<Self::Delta>) -> Result<(), Error>;
+}
+
+pub trait Reducer<T> {
+    type Delta: Send + 'static;
+    const POLICY: WritePolicy;
+
+    fn reduce(&mut self, current: &T, delta: Self::Delta) -> Result<T, Error>;
+    fn finish(self, value: T) -> Result<T, Error>;
+}
+
+#[derive(Default)]
+pub struct Override;
+
+impl<T: Send + 'static> Reducer<T> for Override {
+    type Delta = T;
+    const POLICY: WritePolicy = WritePolicy::SingleWriter;
+
+    fn reduce(&mut self, _current: &T, delta: T) -> Result<T, Error> {
+        Ok(delta)
+    }
+
+    fn finish(self, value: T) -> Result<T, Error> {
+        Ok(value)
+    }
+}
+
+#[derive(Default)]
+pub struct Append;
+
+impl<T: Clone + Send + 'static> Reducer<Vec<T>> for Append {
+    type Delta = Vec<T>;
+    const POLICY: WritePolicy = WritePolicy::MultiWriter;
+
+    fn reduce(&mut self, current: &Vec<T>, delta: Vec<T>) -> Result<Vec<T>, Error> {
+        let mut value = current.clone();
+        value.extend(delta);
+        Ok(value)
+    }
+
+    fn finish(self, value: Vec<T>) -> Result<Vec<T>, Error> {
+        Ok(value)
+    }
+}
+
+#[derive(Default)]
+pub struct Merge;
+
+impl<K, V> Reducer<HashMap<K, V>> for Merge
+where
+    K: Eq + Hash + Clone + Send + 'static,
+    V: Clone + Send + 'static,
+{
+    type Delta = HashMap<K, V>;
+    const POLICY: WritePolicy = WritePolicy::MultiWriter;
+
+    fn reduce(
+        &mut self,
+        current: &HashMap<K, V>,
+        delta: HashMap<K, V>,
+    ) -> Result<HashMap<K, V>, Error> {
+        let mut value = current.clone();
+        value.extend(delta);
+        Ok(value)
+    }
+
+    fn finish(self, value: HashMap<K, V>) -> Result<HashMap<K, V>, Error> {
+        Ok(value)
+    }
+}
+
+macro_rules! add_reducer {
+    ($($type:ty),+ $(,)?) => {$ (
+        impl Reducer<$type> for Add {
+            type Delta = $type;
+            const POLICY: WritePolicy = WritePolicy::MultiWriter;
+
+            fn reduce(&mut self, current: &$type, delta: $type) -> Result<$type, Error> {
+                current.checked_add(delta).ok_or_else(|| {
+                    MergeError::Overflow { field: None }.into()
+                })
+            }
+
+            fn finish(self, value: $type) -> Result<$type, Error> {
+                Ok(value)
+            }
+        }
+    )+ };
+}
+
+#[derive(Default)]
+pub struct Add;
+add_reducer!(
+    u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize
+);
+
+pub struct Sort<R, F> {
+    reducer: R,
+    compare: F,
+}
+
+impl<R, F> Sort<R, F> {
+    pub fn new(reducer: R, compare: F) -> Self {
+        Self { reducer, compare }
+    }
+}
+
+impl<T, R, F> Reducer<Vec<T>> for Sort<R, F>
+where
+    R: Reducer<Vec<T>>,
+    F: Fn(&T, &T) -> Ordering,
+{
+    type Delta = R::Delta;
+    const POLICY: WritePolicy = R::POLICY;
+
+    fn reduce(&mut self, current: &Vec<T>, delta: Self::Delta) -> Result<Vec<T>, Error> {
+        self.reducer.reduce(current, delta)
+    }
+
+    fn finish(self, value: Vec<T>) -> Result<Vec<T>, Error> {
+        let mut value = self.reducer.finish(value)?;
+        value.sort_by(&self.compare);
+        Ok(value)
+    }
+}

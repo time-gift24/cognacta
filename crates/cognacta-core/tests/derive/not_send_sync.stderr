@@ -1,0 +1,126 @@
+error[E0277]: `Rc<String>` cannot be sent between threads safely
+ --> tests/derive/not_send_sync.rs:3:10
+  |
+3 | #[derive(State)]
+  |          ^^^^^ `Rc<String>` cannot be sent between threads safely
+  |
+  = help: the trait `Send` is not implemented for `Rc<String>`
+help: the trait `Reducer<T>` is conditionally implemented for `Override`
+ --> src/state.rs
+  |
+  | impl<T: Send + 'static> Reducer<T> for Override {
+  | ^^^^^^^^----^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |         |
+  |         unsatisfied requirement introduced here: `Rc<String>: Send`
+  = note: required for `Override` to implement `Reducer<Rc<String>>`
+  = note: this error originates in the derive macro `State` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: `Rc<String>` cannot be sent between threads safely
+ --> tests/derive/not_send_sync.rs:3:10
+  |
+3 | #[derive(State)]
+  |          ^^^^^ `Rc<String>` cannot be sent between threads safely
+  |
+  = help: the trait `Send` is not implemented for `Rc<String>`
+  = note: required for `Override` to implement `Reducer<Rc<String>>`
+note: required because it appears within the type `BadDelta`
+ --> tests/derive/not_send_sync.rs:3:10
+  |
+3 | #[derive(State)]
+  |          ^^^^^
+note: required by a bound in `cognacta_core::State::Delta`
+ --> src/state.rs
+  |
+  |     type Delta: Default + Send + 'static;
+  |                           ^^^^ required by this bound in `State::Delta`
+  = note: this error originates in the derive macro `State` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: `Rc<String>` cannot be sent between threads safely
+ --> tests/derive/not_send_sync.rs:3:10
+  |
+3 | #[derive(State)]
+  |          ^^^^^ `Rc<String>` cannot be sent between threads safely
+  |
+  = help: within `Bad`, the trait `Send` is not implemented for `Rc<String>`
+note: required because it appears within the type `Bad`
+ --> tests/derive/not_send_sync.rs:4:8
+  |
+4 | struct Bad {
+  |        ^^^
+note: required by a bound in `cognacta_core::State`
+ --> src/state.rs
+  |
+  | pub trait State: Send + Sync + 'static {
+  |                  ^^^^ required by this bound in `State`
+  = note: this error originates in the derive macro `State` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: `Rc<String>` cannot be shared between threads safely
+ --> tests/derive/not_send_sync.rs:3:10
+  |
+3 | #[derive(State)]
+  |          ^^^^^ `Rc<String>` cannot be shared between threads safely
+  |
+  = help: within `Bad`, the trait `Sync` is not implemented for `Rc<String>`
+note: required because it appears within the type `Bad`
+ --> tests/derive/not_send_sync.rs:4:8
+  |
+4 | struct Bad {
+  |        ^^^
+note: required by a bound in `cognacta_core::State`
+ --> src/state.rs
+  |
+  | pub trait State: Send + Sync + 'static {
+  |                         ^^^^ required by this bound in `State`
+  = note: this error originates in the derive macro `State` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: `Rc<String>` cannot be shared between threads safely
+ --> tests/derive/not_send_sync.rs:4:8
+  |
+4 | struct Bad {
+  |        ^^^ `Rc<String>` cannot be shared between threads safely
+  |
+  = help: within `Bad`, the trait `Sync` is not implemented for `Rc<String>`
+note: required because it appears within the type `Bad`
+ --> tests/derive/not_send_sync.rs:4:8
+  |
+4 | struct Bad {
+  |        ^^^
+note: required by a bound in `cognacta_core::State`
+ --> src/state.rs
+  |
+  | pub trait State: Send + Sync + 'static {
+  |                         ^^^^ required by this bound in `State`
+
+error[E0277]: `Rc<String>` cannot be sent between threads safely
+ --> tests/derive/not_send_sync.rs:4:8
+  |
+4 | struct Bad {
+  |        ^^^ `Rc<String>` cannot be sent between threads safely
+  |
+  = help: within `Bad`, the trait `Send` is not implemented for `Rc<String>`
+note: required because it appears within the type `Bad`
+ --> tests/derive/not_send_sync.rs:4:8
+  |
+4 | struct Bad {
+  |        ^^^
+note: required by a bound in `cognacta_core::State`
+ --> src/state.rs
+  |
+  | pub trait State: Send + Sync + 'static {
+  |                  ^^^^ required by this bound in `State`
+
+error[E0277]: `Rc<String>` cannot be sent between threads safely
+ --> tests/derive/not_send_sync.rs:5:15
+  |
+5 |     #[reducer(Override)]
+  |               ^^^^^^^^ `Rc<String>` cannot be sent between threads safely
+  |
+  = help: the trait `Send` is not implemented for `Rc<String>`
+help: the trait `Reducer<T>` is conditionally implemented for `Override`
+ --> src/state.rs
+  |
+  | impl<T: Send + 'static> Reducer<T> for Override {
+  | ^^^^^^^^----^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |         |
+  |         unsatisfied requirement introduced here: `Rc<String>: Send`
+  = note: required for `Override` to implement `Reducer<Rc<String>>`

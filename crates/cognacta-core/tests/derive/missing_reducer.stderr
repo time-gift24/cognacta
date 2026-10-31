@@ -1,0 +1,5 @@
+error: each State field requires exactly one #[reducer(...)] attribute
+ --> tests/derive/missing_reducer.rs:3:21
+  |
+3 | struct Bad { value: u32 }
+  |                     ^^^

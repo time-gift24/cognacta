@@ -1,0 +1,71 @@
+error[E0277]: the trait bound `cognacta_core::Add: Reducer<String>` is not satisfied
+ --> tests/derive/add_string.rs:2:10
+  |
+2 | #[derive(State)]
+  |          ^^^^^ the trait `Reducer<String>` is not implemented for `cognacta_core::Add`
+  |
+  = help: `cognacta_core::Add` implements trait `Reducer<T>`:
+            Reducer<i128>
+            Reducer<i16>
+            Reducer<i32>
+            Reducer<i64>
+            Reducer<i8>
+            Reducer<isize>
+            Reducer<u128>
+            Reducer<u16>
+            Reducer<u32>
+            Reducer<u64>
+            Reducer<u8>
+            Reducer<usize>
+  = note: this error originates in the derive macro `State` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `cognacta_core::Add: Reducer<String>` is not satisfied in `BadDelta`
+ --> tests/derive/add_string.rs:2:10
+  |
+2 | #[derive(State)]
+  |          ^^^^^ within `BadDelta`, the trait `Reducer<String>` is not implemented for `cognacta_core::Add`
+  |
+  = help: `cognacta_core::Add` implements trait `Reducer<T>`:
+            Reducer<i128>
+            Reducer<i16>
+            Reducer<i32>
+            Reducer<i64>
+            Reducer<i8>
+            Reducer<isize>
+            Reducer<u128>
+            Reducer<u16>
+            Reducer<u32>
+            Reducer<u64>
+            Reducer<u8>
+            Reducer<usize>
+note: required because it appears within the type `BadDelta`
+ --> tests/derive/add_string.rs:2:10
+  |
+2 | #[derive(State)]
+  |          ^^^^^
+note: required by a bound in `cognacta_core::State::Delta`
+ --> src/state.rs
+  |
+  |     type Delta: Default + Send + 'static;
+  |                           ^^^^ required by this bound in `State::Delta`
+  = note: this error originates in the derive macro `State` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `cognacta_core::Add: Reducer<String>` is not satisfied
+ --> tests/derive/add_string.rs:4:15
+  |
+4 |     #[reducer(Add)]
+  |               ^^^ the trait `Reducer<String>` is not implemented for `cognacta_core::Add`
+  |
+  = help: `cognacta_core::Add` implements trait `Reducer<T>`:
+            Reducer<i128>
+            Reducer<i16>
+            Reducer<i32>
+            Reducer<i64>
+            Reducer<i8>
+            Reducer<isize>
+            Reducer<u128>
+            Reducer<u16>
+            Reducer<u32>
+            Reducer<u64>
+            Reducer<u8>
+            Reducer<usize>

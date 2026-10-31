@@ -1,0 +1,15 @@
+error[E0308]: mismatched types
+ --> tests/derive/sort_comparator.rs:5:98
+  |
+5 |     #[reducer(Sort<Append, fn(&String, &String) -> std::cmp::Ordering>, init = Sort::new(Append, compare))]
+  |                                                                                ---------         ^^^^^^^ expected fn pointer, found fn item
+  |                                                                                |
+  |                                                                                arguments to this function are incorrect
+  |
+  = note: expected fn pointer `for<'a, 'b> fn(&'a String, &'b String) -> std::cmp::Ordering`
+                found fn item `for<'a, 'b> fn(&'a u32, &'b u32) -> std::cmp::Ordering {compare}`
+note: associated function defined here
+ --> src/state.rs
+  |
+  |     pub fn new(reducer: R, compare: F) -> Self {
+  |            ^^^

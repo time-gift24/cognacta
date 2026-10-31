@@ -1,0 +1,13 @@
+error: field identity FooBar is already generated for foo_bar
+ --> tests/derive/ambiguous_field.rs:7:5
+  |
+7 |     fooBar: u32,
+  |     ^^^^^^
+
+warning: unused import: `Add`
+ --> tests/derive/ambiguous_field.rs:1:21
+  |
+1 | use cognacta_core::{Add, State};
+  |                     ^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default

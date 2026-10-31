@@ -1,0 +1,13 @@
+error: each State field requires exactly one #[reducer(...)] attribute
+ --> tests/derive/duplicate_reducer.rs:6:12
+  |
+6 |     value: u32,
+  |            ^^^
+
+warning: unused import: `Add`
+ --> tests/derive/duplicate_reducer.rs:1:21
+  |
+1 | use cognacta_core::{Add, State};
+  |                     ^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default

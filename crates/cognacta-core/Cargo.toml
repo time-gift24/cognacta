@@ -1,0 +1,16 @@
+[package]
+name = "cognacta-core"
+description = "In-memory graph execution kernel"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+bon.workspace = true
+cognacta-derive.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+trybuild.workspace = true

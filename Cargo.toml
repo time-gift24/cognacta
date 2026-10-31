@@ -10,6 +10,13 @@ repository = "https://github.com/cognacta/cognacta"
 
 [workspace.dependencies]
 cognacta-collector = { version = "0.1.0", path = "crates/cognacta-collector" }
+cognacta-core = { version = "0.1.0", path = "crates/cognacta-core" }
+cognacta-derive = { version = "0.1.0", path = "crates/cognacta-derive" }
+bon = "3.8"
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2", features = ["full"] }
+trybuild = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2.5"
@@ -41,7 +48,7 @@ sqlx = { version = "0.9", default-features = false, features = [
 anyhow = "1"
 csv = "1.4"
 itertools = "0.14"
-tokio = { version = "1.48", features = ["macros", "rt", "rt-multi-thread"] }
+tokio = { version = "1.48", features = ["macros", "rt", "rt-multi-thread", "sync"] }
 uuid = { version = "1.18", features = ["v4"] }
 url = "2"
 

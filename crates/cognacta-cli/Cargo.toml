@@ -6,8 +6,14 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+default = []
+dev = ["dep:cognacta-core", "dep:tokio"]
+
 [dependencies]
 cognacta-collector.workspace = true
+cognacta-core = { workspace = true, optional = true }
 tracing.workspace = true
 clap = { workspace = true, features = ["derive"] }
 thiserror.workspace = true
+tokio = { workspace = true, optional = true }
