@@ -238,6 +238,49 @@ run 是本地诊断入口，不放进统一 Scheduler trait。后续其他目标
 
 目标在 call 时显式传入。非循环嵌套可以由节点直接持有目标 Arc；自递归或相互调用使用应用资源中的固定 OnceLock 槽位，在图构造完毕后填入目标，节点执行时经 Context 读取。资源持有图，图及节点不反向持有资源对象，初始化闭包也不捕获该资源 Arc；这样组装值时不需要先拥有尚未构造的图，也不形成永久的强引用环。第 8.2 节给出包含深度拒绝验收的公开 API 示例。core 不因此新增目标注册表、GraphCall、LocalGraphCall、SubgraphNode 或节点工厂。
 
+### 5.1 本地执行的内部结构与生命周期
+
+本地 implementation 使用私有 Execution 对象直接持有一次执行的 Run，以及跨 wave 使用的调度临时数据。Execution 同时承载操作这些数据的调度行为，结束时交出其中的 Run；不另建一份运行记录或复制快照来同步状态。Execution 是内部实现名称，不新增公开类型、trait 或调用 interface。
+
+入口与执行分文件，建议结构如下；这些文件随本次功能实现建立，不提前创建空 module：
+
+```text
+crates/cognacta-core/src/scheduler/
+├── mod.rs          # Scheduler trait、必要导出
+├── local.rs        # LocalScheduler、SchedulerConfig、run / call 入口
+├── execution.rs    # Execution 及完整调度算法
+└── observation.rs  # Run 生命周期观测的私有 implementation
+```
+
+scheduler 及其内部 module 保持私有；公开类型、bon builder 和必要状态 module 仍按第 1 节从 crate 根可达。Execution 的使用范围限制在 scheduler module 内。ready、Sweep、输入组装、wave 执行、归并与路由共同维护一组调度不变量，集中在 execution.rs，不按步骤再拆出可替换的 module 或 adapter。
+
+状态按实际生命周期归属：
+
+| 存放位置 | 数据与职责 |
+| --- | --- |
+| Run | State、运行状态、节点输入/输出与执行记录、按 template 查询的实例记录、错误列表、最终输出、波数及公开读取所需的运行身份信息；执行后继续供调用方检查 |
+| Execution | 直接持有上述 Run，并保存 Graph 引用、本次调用输入与 RunContext、执行配置、Transition 许可、实例输入、实例创建顺序等跨 wave 数据 |
+| 单次 wave 的局部变量 | ready 列表、State 快照、JoinSet、任务与结果位置映射、任务结果、待归并 Delta 和待处理 Directive；随该 wave 执行和结算使用 |
+
+当前 Run 中仅用于安排实例调度顺序的 instance_order 移入 Execution；Run 中供 instances 读取的按 template 实例记录继续保留。Run 只保存公开诊断所需的身份信息，不为复用上下文而持有整份 RunContext<R> 或资源对象。调度持有的 wave State 快照在归并前释放，保持既有 State 所有权及归并约束。
+
+调用与交付顺序为：
+
+```text
+call：派生子身份、检查深度 → run → Run.into_result
+run：开始观测 → 校验入口 → 初始化 State → 创建 Execution → 执行并结算 → 返回 Run
+```
+
+1. LocalScheduler 保存配置，由 run 管理一次执行的启动与收尾。run 的 future 首次被 poll 时开始观测，随后对目标 Graph 校验一次入口集合，再执行本次 State 初始化；总耗时包含这些启动步骤。
+2. 入口校验或初始化失败直接返回第 7 节规定的 Error，此时尚未创建 Execution 和完整 Run。只有取得有效 State 后才创建 Run 并交给 Execution，因此 Run.state 始终保持返回 &S 的契约。
+3. Execution 使用本次输入、上下文和配置驱动既有调度流程；各 Run 的任务集合与并发名额独立。节点、归并、路由、停滞及 wave 上限等执行错误继续保存在所持有的 Run 中，保持原有稳定结算和错误顺序。
+4. Execution 在整图执行结束时按第 6、7 节确认最终状态与类型化返回：返回节点提前完成不结束图，执行失败阻止结果交付，只有其他阶段成功而返回值缺失时记录 MissingOutput。结束时移交已有 Run，调度临时数据随 Execution 结束释放。
+5. call 通过同一个 LocalScheduler.run 执行子调用；启动错误直接传播，取得 Run 后交由 Run.into_result 统一转换为业务 Arc 或调用错误。call 不再次解释 RunStatus 或错误列表，也不维护第二套本地执行生命周期。
+
+observation.rs 使用 tracing 承载已确认的 span、安全字段和完成/失败/本地取消结算，由 run 统一管理其生命周期；观测 guard 覆盖初始化和 Execution 执行，不随返回的 Run 延后收尾。深度拒绝在 call 派生身份时关联发起调用的父位置，不创建未执行子 Run 的观测。未 poll、正常 drop、预期错误和 panic 的处理沿用第 9.1 节，不新增日志类别、调度指标、观测回调 seam 或停止协议。
+
+此次组织调整改善状态与行为的 locality，公开 interface 和测试 seam 保持第 9 节约定。继续通过 LocalScheduler.run 与 Scheduler.call 验证固定 wave、稳定结算、路由及子调用行为；保留根导出使用样例和编译约束验收，不为测试开放 Execution 或其临时状态。
+
 ## 6. Run 的公开读取与结果交付
 
 ```rust
@@ -643,4 +686,4 @@ async fn main() -> Result<(), Error> {
 
 测试运行在支持 unwind 的配置中；不声称 catch_unwind 可以验证进程 abort 场景。这里的捕获只服务观测断言，不给产品添加通用 panic 捕获、恢复、interrupt/resume 或新的 Run 状态。
 
-本次只新增此设计及规格正文，未编写上述 Rust 实现、修改依赖、运行 Rust 功能测试、更新现行正式规格或发布 issue。当前文件是后续实施输入；之后如使用 OpenSpec 的完整变更流程，再根据本契约补齐 delta specs 和任务清单，并完成相应验证。
+本次仅交付设计及规格文档，未编写上述 Rust 实现、修改依赖、运行 Rust 功能测试、更新现行正式规格或发布 issue。配套行为见 [内核 delta](specs/graph-kernel-execution/spec.md) 与 [CLI delta](specs/graph-check-cli/spec.md)，后续实施与验收步骤见 [任务清单](tasks.md)；所有实现任务在实施前保持未完成。

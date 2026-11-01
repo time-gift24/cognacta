@@ -116,4 +116,13 @@ Scheduler 成为调度 trait，call 直接接收目标、按入口分配的输�
 
 配套公开 API 契约见 [设计说明](design.md)。需求与测试边界以本次对话确认的内容为准；本文没有把未实施的接口描述为已存在能力。
 
-本地文档位置和测试方案已于 2026-11-01 由用户确认。未配置或修改项目 issue tracker、triage 词汇、规范文件和正式规格。本变更尚未形成已实施的 OpenSpec delta，不应据此将现行规格标记为已更新。
+### Capabilities
+
+#### Modified Capabilities
+
+- `graph-kernel-execution`：[delta spec](specs/graph-kernel-execution/spec.md) 定义静态图的类型化返回、入口输入、独立初始化、Scheduler 调用、身份与深度、资源、错误及 Run 观测；保留既有 wave、路由与归并规则。
+- `graph-check-cli`：[delta spec](specs/graph-check-cli/spec.md) 将既有 dev 验收样例和报告适配到 LocalScheduler、GraphInput 与类型化最终结果，保留六类十六个变体及退出码语义。
+
+不新增 capability。`typed-state-reducers` 的 State/derive 归并契约及 `observability-runtime` 的 Collector 契约保持不变。
+
+本地文档位置和测试方案已于 2026-11-01 由用户确认。[任务清单](tasks.md) 描述后续实施与验收步骤，所有任务在实现前保持未完成。未配置或修改项目 issue tracker、triage 词汇、规范文件和正式规格；本变更的 delta specs 尚未实施或合入现行规格。
