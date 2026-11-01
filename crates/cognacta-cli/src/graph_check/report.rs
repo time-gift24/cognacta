@@ -1,8 +1,8 @@
 use std::io::Write;
 
 use cognacta_core::{
-    DirectiveError, Error, MergeError, NodeError, NodeKey, NodeStatus, Run, RunError, RunStatus,
-    SharedValue, State,
+    DirectiveError, Error, Input, MergeError, NodeError, NodeId, NodeKey, NodeStatus, Run,
+    RunError, RunStatus, SharedValue, State,
 };
 
 use super::Job;
@@ -16,8 +16,8 @@ pub(super) struct Assertion {
 
 struct NodeFact {
     key: NodeKey,
-    status: NodeStatus,
-    attempts: u32,
+    status: String,
+    attempts: String,
     output: String,
 }
 
@@ -28,6 +28,7 @@ pub(super) struct CaseReport {
     nodes: Vec<NodeFact>,
     state: Vec<(String, String)>,
     final_output: String,
+    final_values: Vec<(NodeId, String)>,
     errors: Vec<String>,
     assertions: Vec<Assertion>,
 }
@@ -44,27 +45,39 @@ impl CaseReport {
             .map(|key| {
                 let node = run.node(&key);
                 NodeFact {
-                    status: node.map_or(NodeStatus::Pending, |node| node.status()),
-                    attempts: node.map_or(0, |node| node.attempts()),
-                    output: node
-                        .and_then(|node| node.output())
-                        .map_or_else(|| "none".into(), format_value),
+                    status: node
+                        .map_or("missing", |node| node_status(node.status()))
+                        .into(),
+                    attempts: node
+                        .map_or_else(|| "missing".into(), |node| node.attempts().to_string()),
+                    output: node.map_or_else(
+                        || "missing".into(),
+                        |node| node.output().map_or_else(|| "none".into(), format_value),
+                    ),
                     key,
                 }
             })
             .collect();
-        let final_output = run.final_output().map_or_else(
-            || "none".into(),
-            |output| {
-                let mut values = output
-                    .values
+        let mut final_values = run.final_output().map_or_else(Vec::new, |output| {
+            output
+                .values
+                .iter()
+                .map(|(node, value)| (node.clone(), format_value(value)))
+                .collect::<Vec<_>>()
+        });
+        final_values.sort_by(|left, right| left.0.cmp(&right.0));
+        let final_output = if run.final_output().is_some() {
+            format!(
+                "{{{}}}",
+                final_values
                     .iter()
-                    .map(|(node, value)| format!("{}={}", node.as_str(), format_value(value)))
-                    .collect::<Vec<_>>();
-                values.sort();
-                format!("{{{}}}", values.join(","))
-            },
-        );
+                    .map(|(node, value)| format!("{node}={value}"))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            )
+        } else {
+            "none".into()
+        };
         Self {
             case: case.into(),
             run: run_status(run.status()).into(),
@@ -72,6 +85,7 @@ impl CaseReport {
             nodes,
             state,
             final_output,
+            final_values,
             errors: run.errors().iter().map(run_error).collect(),
             assertions: Vec::new(),
         }
@@ -85,6 +99,7 @@ impl CaseReport {
             nodes: Vec::new(),
             state: Vec::new(),
             final_output: "none".into(),
+            final_values: vec![],
             errors: vec![error_kind(error)],
             assertions: Vec::new(),
         };
@@ -108,6 +123,45 @@ impl CaseReport {
         });
     }
 
+    pub(super) fn node_status(&self, key: &NodeKey) -> String {
+        self.nodes
+            .iter()
+            .find(|node| &node.key == key)
+            .map_or_else(|| "missing".into(), |node| node.status.clone())
+    }
+
+    pub(super) fn node_attempts(&self, key: &NodeKey) -> String {
+        self.nodes
+            .iter()
+            .find(|node| &node.key == key)
+            .map_or_else(|| "missing".into(), |node| node.attempts.clone())
+    }
+
+    pub(super) fn node_output(&self, key: &NodeKey) -> String {
+        self.nodes
+            .iter()
+            .find(|node| &node.key == key)
+            .map_or_else(|| "missing".into(), |node| node.output.clone())
+    }
+
+    pub(super) fn final_value(&self, key: &NodeId) -> String {
+        self.final_values
+            .iter()
+            .find(|(node, _)| node == key)
+            .map_or_else(|| "missing".into(), |(_, value)| value.clone())
+    }
+
+    pub(super) fn errors(&self) -> &[String] {
+        &self.errors
+    }
+
+    pub(super) fn error(&self, index: usize) -> String {
+        self.errors
+            .get(index)
+            .cloned()
+            .unwrap_or_else(|| "missing".into())
+    }
+
     pub(super) fn passed(&self) -> bool {
         self.assertions.iter().all(|assertion| assertion.passed)
     }
@@ -126,10 +180,7 @@ impl CaseReport {
             writeln!(
                 writer,
                 "node={} status={} attempts={} output={}",
-                node.key,
-                node_status(node.status),
-                node.attempts,
-                node.output
+                node.key, node.status, node.attempts, node.output
             )?;
         }
         for (field, value) in &self.state {
@@ -148,6 +199,17 @@ impl CaseReport {
             )?;
         }
         Ok(())
+    }
+}
+
+pub(super) fn input_fact<S: State>(
+    run: &Run<S>,
+    key: &NodeKey,
+    read: impl FnOnce(&Input) -> Result<String, Error>,
+) -> String {
+    match run.node(key).and_then(|node| node.input()) {
+        Some(input) => read(input).unwrap_or_else(|error| error_kind(&error)),
+        None => "missing".into(),
     }
 }
 
@@ -233,6 +295,7 @@ mod tests {
             nodes: vec![],
             state: vec![],
             final_output: "none".into(),
+            final_values: vec![],
             errors: vec!["Stalled".into()],
             assertions: vec![],
         };
@@ -240,5 +303,71 @@ mod tests {
         report.check("output", "len=5", "type-mismatch");
         assert!(!report.passed());
         assert_eq!(report.assertions[1].actual, "type-mismatch");
+    }
+
+    #[derive(cognacta_core::State)]
+    struct EmptyState {}
+
+    struct Echo;
+    impl cognacta_core::NodeInstance<EmptyState> for Echo {
+        type Output = u32;
+        async fn run(
+            &self,
+            input: &Input,
+            _: cognacta_core::NodeContext<EmptyState>,
+        ) -> Result<cognacta_core::Outcome<EmptyState, u32>, Error> {
+            Ok(cognacta_core::Outcome {
+                value: Some(*input.entry::<u32>()?),
+                state_delta: EmptyStateDelta::default(),
+                directive: None,
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn actual_missing_facts_are_reported_without_inventing_pending_nodes() {
+        use cognacta_core::{Graph, Node, Scheduler, SchedulerConfig};
+        let id = NodeId::new("echo");
+        let key = NodeKey::Static(id.clone());
+        let absent = NodeKey::Static(NodeId::new("absent"));
+        let graph = Graph::build(
+            vec![Node::new(id.clone(), Echo).terminal(true)],
+            vec![],
+            vec![id],
+        )
+        .unwrap();
+        for waves in [0, 1] {
+            let run = Scheduler::new(SchedulerConfig::new(1, waves).unwrap())
+                .run(
+                    &graph,
+                    "facts".into(),
+                    EmptyState {},
+                    vec![std::sync::Arc::new(7_u32)],
+                )
+                .await;
+            let mut report =
+                CaseReport::capture("facts", &run, vec![key.clone(), absent.clone()], vec![]);
+            report.check("absent-node", "completed", report.node_status(&absent));
+            report.check("absent-attempts", "1", report.node_attempts(&absent));
+            report.check("absent-output", "7", report.node_output(&absent));
+            assert_eq!(input_fact(&run, &absent, |_| unreachable!()), "missing");
+            let input = input_fact(&run, &key, |input| Ok(input.entry::<u32>()?.to_string()));
+            assert_eq!(input, if waves == 0 { "missing" } else { "7" });
+            if waves == 1 {
+                // An expected failure can become a success during a regression.
+                report.check("expected-error", "Stalled", report.error(0));
+                assert_eq!(report.error(0), "missing");
+                assert!(
+                    input_fact(&run, &key, |input| Ok(input.entry::<String>()?.clone()))
+                        .starts_with("Input(")
+                );
+            }
+            assert!(!report.passed());
+            let mut output = Vec::new();
+            report.write(&mut output).unwrap();
+            let output = String::from_utf8(output).unwrap();
+            assert!(output.contains("check=FAIL"));
+            assert!(output.contains("node=absent status=missing attempts=missing output=missing"));
+        }
     }
 }

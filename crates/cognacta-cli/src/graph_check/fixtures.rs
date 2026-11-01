@@ -1,8 +1,4 @@
-use std::{
-    any::Any,
-    fmt::Debug,
-    sync::{Arc, Mutex},
-};
+use std::sync::{Arc, Mutex};
 
 use cognacta_core::{
     Add, Append, Directive, Edge, Error, Graph, Input, Join, Node, NodeContext, NodeId,
@@ -28,32 +24,7 @@ fn keys<S: State>(run: &Run<S>, static_names: &[&str], templates: &[&str]) -> Ve
         .collect()
 }
 
-fn output<T: Any + Debug>(run: &Run<impl State>, node: &NodeKey) -> String {
-    run.node(node)
-        .and_then(|node| node.output())
-        .and_then(|value| value.downcast_ref::<T>())
-        .map_or_else(|| "type-mismatch".into(), |value| format!("{value:?}"))
-}
-
-fn final_output<T: Any + Debug>(run: &Run<impl State>, node: &str) -> String {
-    run.final_output()
-        .and_then(|output| output.values.get(&NodeId::new(node)))
-        .and_then(|value| value.downcast_ref::<T>())
-        .map_or_else(|| "type-mismatch".into(), |value| format!("{value:?}"))
-}
-
-fn status(run: &Run<impl State>, name: &str) -> String {
-    run.node(&key(name)).map_or_else(
-        || "missing".into(),
-        |node| format!("{:?}", node.status()).to_lowercase(),
-    )
-}
-
-fn attempts(run: &Run<impl State>, name: &str) -> String {
-    run.node(&key(name))
-        .map_or_else(|| "missing".into(), |node| node.attempts().to_string())
-}
-
+#[bon::builder]
 async fn execute<S: State>(
     case: &str,
     graph: &Graph<S>,
@@ -155,15 +126,15 @@ pub(super) async fn chain(limited: bool) -> Result<CaseReport, Error> {
         ],
         vec![NodeId::new("A")],
     )?;
-    let run = execute(
-        case,
-        &graph,
-        1,
-        if limited { 2 } else { 3 },
-        ChainState { length: 0 },
-        vec![Arc::new(String::from("hello")) as SharedValue],
-    )
-    .await?;
+    let run = execute()
+        .case(case)
+        .graph(&graph)
+        .concurrency(1)
+        .waves(if limited { 2 } else { 3 })
+        .state(ChainState { length: 0 })
+        .entries(vec![Arc::new(String::from("hello")) as SharedValue])
+        .call()
+        .await?;
     let mut report = CaseReport::capture(
         case,
         &run,
@@ -187,33 +158,32 @@ pub(super) async fn chain(limited: bool) -> Result<CaseReport, Error> {
         } else {
             "completed"
         };
-        report.check(format!("{name}-status"), expected, status(&run, name));
+        report.check(
+            format!("{name}-status"),
+            expected,
+            report.node_status(&key(name)),
+        );
         report.check(
             format!("{name}-attempts"),
             if limited && name == "C" { "0" } else { "1" },
-            attempts(&run, name),
+            report.node_attempts(&key(name)),
         );
     }
     report.check(
         "A-entry-origin",
         "Run",
-        format!(
-            "{:?}",
-            run.node(&key("A"))
-                .unwrap()
-                .input()
-                .unwrap()
-                .entry_origins()[0]
-                .origin
-        ),
+        super::report::input_fact(&run, &key("A"), |input| {
+            Ok(input
+                .entry_origins()
+                .first()
+                .map_or_else(|| "missing".into(), |source| format!("{:?}", source.origin)))
+        }),
     );
-    report.check("B-output", "5", output::<u32>(&run, &key("B")));
+    report.check("B-output", "5", report.node_output(&key("B")));
     report.check(
         "C-output",
         if limited { "none" } else { "\"len=5\"" },
-        run.node(&key("C"))
-            .and_then(|node| node.output())
-            .map_or_else(|| "none".into(), |_| output::<String>(&run, &key("C"))),
+        report.node_output(&key("C")),
     );
     report.check(
         "final-C",
@@ -221,22 +191,13 @@ pub(super) async fn chain(limited: bool) -> Result<CaseReport, Error> {
         if run.final_output().is_none() {
             "none".into()
         } else {
-            final_output::<String>(&run, "C")
+            report.final_value(&NodeId::new("C"))
         },
     );
     report.check(
         "errors",
         if limited { "[\"MaxWaves\"]" } else { "[]" },
-        format!(
-            "{:?}",
-            run.errors()
-                .iter()
-                .map(|error| match error {
-                    cognacta_core::RunError::MaxWaves => "MaxWaves",
-                    _ => "other",
-                })
-                .collect::<Vec<_>>()
-        ),
+        format!("{:?}", report.errors()),
     );
     Ok(report)
 }
@@ -379,18 +340,18 @@ pub(super) async fn diamond(parallel: bool) -> Result<CaseReport, Error> {
         ],
         vec![NodeId::new("A")],
     )?;
-    let run = execute(
-        case,
-        &graph,
-        if parallel { 2 } else { 1 },
-        3,
-        DiamondState {
+    let run = execute()
+        .case(case)
+        .graph(&graph)
+        .concurrency(if parallel { 2 } else { 1 })
+        .waves(3)
+        .state(DiamondState {
             count: 0,
             labels: vec![],
-        },
-        vec![],
-    )
-    .await?;
+        })
+        .entries(vec![])
+        .call()
+        .await?;
     let mut report = CaseReport::capture(
         case,
         &run,
@@ -412,23 +373,32 @@ pub(super) async fn diamond(parallel: bool) -> Result<CaseReport, Error> {
         "[\"A\", \"B\", \"C\"]",
         format!("{:?}", run.state().labels),
     );
-    report.check("B-seen", "10", output::<u32>(&run, &key("B")));
-    report.check("C-seen", "10", output::<u32>(&run, &key("C")));
+    report.check("B-seen", "10", report.node_output(&key("B")));
+    report.check("C-seen", "10", report.node_output(&key("C")));
     report.check(
         "D-output",
         "\"B=10,C=10,count=12\"",
-        output::<String>(&run, &key("D")),
+        report.node_output(&key("D")),
     );
-    let input = run.node(&key("D")).unwrap().input().unwrap();
     report.check(
         "D-B-origin",
         "Node(Static(NodeId(\"B\")))",
-        format!("{:?}", input.origins(&NodeId::new("B"))[0].origin),
+        super::report::input_fact(&run, &key("D"), |input| {
+            Ok(input
+                .origins(&NodeId::new("B"))
+                .first()
+                .map_or_else(|| "missing".into(), |source| format!("{:?}", source.origin)))
+        }),
     );
     report.check(
         "D-C-origin",
         "Node(Static(NodeId(\"C\")))",
-        format!("{:?}", input.origins(&NodeId::new("C"))[0].origin),
+        super::report::input_fact(&run, &key("D"), |input| {
+            Ok(input
+                .origins(&NodeId::new("C"))
+                .first()
+                .map_or_else(|| "missing".into(), |source| format!("{:?}", source.origin)))
+        }),
     );
     if parallel {
         report.check(
@@ -500,7 +470,15 @@ pub(super) async fn branch(any: bool) -> Result<CaseReport, Error> {
         ],
         vec![NodeId::new("A")],
     )?;
-    let run = execute(case, &graph, 1, 3, EmptyState {}, vec![]).await?;
+    let run = execute()
+        .case(case)
+        .graph(&graph)
+        .concurrency(1)
+        .waves(3)
+        .state(EmptyState {})
+        .entries(vec![])
+        .call()
+        .await?;
     let mut report = CaseReport::capture(
         case,
         &run,
@@ -518,30 +496,34 @@ pub(super) async fn branch(any: bool) -> Result<CaseReport, Error> {
         run.waves().to_string(),
     );
     for name in ["D", "E"] {
-        report.check(format!("{name}-status"), "skipped", status(&run, name));
-        report.check(format!("{name}-attempts"), "0", attempts(&run, name));
+        report.check(
+            format!("{name}-status"),
+            "skipped",
+            report.node_status(&key(name)),
+        );
+        report.check(
+            format!("{name}-attempts"),
+            "0",
+            report.node_attempts(&key(name)),
+        );
     }
     report.check(
         "C-status",
         if any { "completed" } else { "pending" },
-        status(&run, "C"),
+        report.node_status(&key("C")),
     );
     report.check(
         "C-attempts",
         if any { "1" } else { "0" },
-        attempts(&run, "C"),
+        report.node_attempts(&key("C")),
     );
     report.check(
         "error-count",
         if any { "0" } else { "1" },
-        run.errors().len().to_string(),
+        report.errors().len().to_string(),
     );
     if !any {
-        report.check(
-            "error-kind",
-            "Stalled",
-            super::report::run_error(&run.errors()[0]),
-        );
+        report.check("error-kind", "Stalled", report.error(0));
         report.check(
             "final-output",
             "none",
@@ -649,26 +631,19 @@ pub(super) async fn fanout(count: usize) -> Result<CaseReport, Error> {
         }],
         vec![NodeId::new("planner")],
     )?;
-    let run = execute(
-        &case,
-        &graph,
-        2,
-        3,
-        FanoutState {
+    let run = execute()
+        .case(&case)
+        .graph(&graph)
+        .concurrency(2)
+        .waves(3)
+        .state(FanoutState {
             total: 0,
             items: vec![],
-        },
-        vec![],
-    )
-    .await?;
+        })
+        .entries(vec![])
+        .call()
+        .await?;
     let instances = run.instances(&NodeId::new("worker"));
-    let aggregate_input = run.node(&key("aggregate")).unwrap().input().unwrap();
-    let jobs = aggregate_input
-        .many::<Job>(&NodeId::new("worker"))
-        .unwrap()
-        .into_iter()
-        .map(|job| job.0)
-        .collect::<Vec<_>>();
     let expected_jobs = (1..=count as u32).collect::<Vec<_>>();
     let expected_waves = if count == 0 { 2 } else { 3 };
     let expected_total = count as u32 * (count as u32 + 1) / 2;
@@ -691,7 +666,16 @@ pub(super) async fn fanout(count: usize) -> Result<CaseReport, Error> {
     report.check(
         "aggregate-jobs",
         format!("{expected_jobs:?}"),
-        format!("{jobs:?}"),
+        super::report::input_fact(&run, &key("aggregate"), |input| {
+            Ok(format!(
+                "{:?}",
+                input
+                    .many::<Job>(&NodeId::new("worker"))?
+                    .into_iter()
+                    .map(|job| job.0)
+                    .collect::<Vec<_>>()
+            ))
+        }),
     );
     report.check(
         "total",
@@ -713,22 +697,24 @@ pub(super) async fn fanout(count: usize) -> Result<CaseReport, Error> {
     report.check(
         "instance-origins",
         count.to_string(),
-        aggregate_input
-            .origins(&NodeId::new("worker"))
-            .len()
-            .to_string(),
+        super::report::input_fact(&run, &key("aggregate"), |input| {
+            Ok(input.origins(&NodeId::new("worker")).len().to_string())
+        }),
     );
     if count > 1 {
-        let error = aggregate_input
-            .one::<Job>(&NodeId::new("worker"))
-            .unwrap_err();
-        let actual = match error {
-            Error::Input(cognacta_core::InputError::Cardinality { actual, .. }) => {
-                actual.to_string()
-            }
-            _ => "wrong-error".into(),
-        };
-        report.check("one-cardinality", count.to_string(), actual);
+        report.check(
+            "one-cardinality",
+            count.to_string(),
+            super::report::input_fact(&run, &key("aggregate"), |input| {
+                match input.one::<Job>(&NodeId::new("worker")) {
+                    Err(Error::Input(cognacta_core::InputError::Cardinality {
+                        actual, ..
+                    })) => Ok(actual.to_string()),
+                    Err(error) => Err(error),
+                    Ok(_) => Ok("unexpected-success".into()),
+                }
+            }),
+        );
     }
     report.check(
         "final-nodes",
@@ -746,7 +732,7 @@ pub(super) async fn fanout(count: usize) -> Result<CaseReport, Error> {
                 .map(|job| Job(*job))
                 .collect::<Vec<_>>()
         ),
-        final_output::<String>(&run, "aggregate"),
+        report.final_value(&NodeId::new("aggregate")),
     );
     Ok(report)
 }
@@ -845,7 +831,15 @@ pub(super) async fn transition(immediate: bool) -> Result<CaseReport, Error> {
         ],
         vec![NodeId::new("A")],
     )?;
-    let run = execute(case, &graph, 2, 4, TransitionState { count: 0 }, vec![]).await?;
+    let run = execute()
+        .case(case)
+        .graph(&graph)
+        .concurrency(2)
+        .waves(4)
+        .state(TransitionState { count: 0 })
+        .entries(vec![])
+        .call()
+        .await?;
     let mut report = CaseReport::capture(
         case,
         &run,
@@ -866,30 +860,35 @@ pub(super) async fn transition(immediate: bool) -> Result<CaseReport, Error> {
     report.check(
         "T-output",
         if immediate { "\"7@0\"" } else { "\"7@2\"" },
-        output::<String>(&run, &key("T")),
+        report.node_output(&key("T")),
     );
-    let input = run.node(&key("T")).unwrap().input().unwrap();
     report.check(
         "T-payload-sources",
         "1",
-        input.origins(&NodeId::new("A")).len().to_string(),
+        super::report::input_fact(&run, &key("T"), |input| {
+            Ok(input.origins(&NodeId::new("A")).len().to_string())
+        }),
     );
     report.check(
         "T-u32-values",
         "1",
-        input.all::<u32>().unwrap().len().to_string(),
+        super::report::input_fact(&run, &key("T"), |input| {
+            Ok(input.all::<u32>()?.len().to_string())
+        }),
     );
     report.check(
         "T-Q-values",
         "0",
-        input
-            .many::<u32>(&NodeId::new("Q"))
-            .unwrap()
-            .len()
-            .to_string(),
+        super::report::input_fact(&run, &key("T"), |input| {
+            Ok(input.many::<u32>(&NodeId::new("Q"))?.len().to_string())
+        }),
     );
     for name in ["A", "P", "Q", "T"] {
-        report.check(format!("{name}-attempts"), "1", attempts(&run, name));
+        report.check(
+            format!("{name}-attempts"),
+            "1",
+            report.node_attempts(&key(name)),
+        );
     }
     Ok(report)
 }
@@ -1070,19 +1069,19 @@ pub(super) async fn settlement(kind: SettlementKind) -> Result<CaseReport, Error
         }],
         vec![NodeId::new("seed")],
     )?;
-    let run = execute(
-        &case,
-        &graph,
-        concurrency,
-        3,
-        SettlementState {
+    let run = execute()
+        .case(&case)
+        .graph(&graph)
+        .concurrency(concurrency)
+        .waves(3)
+        .state(SettlementState {
             title: None,
             items: vec![],
             count: 0,
-        },
-        vec![],
-    )
-    .await?;
+        })
+        .entries(vec![])
+        .call()
+        .await?;
     let instances = run.instances(&NodeId::new("worker"));
     let mut report = CaseReport::capture(
         &case,
@@ -1094,12 +1093,7 @@ pub(super) async fn settlement(kind: SettlementKind) -> Result<CaseReport, Error
             ("count".into(), run.state().count.to_string()),
         ],
     );
-    let errors = run
-        .errors()
-        .iter()
-        .map(super::report::run_error)
-        .collect::<Vec<_>>()
-        .join(";");
+    let errors = report.errors().join(";");
     let (expected_errors, expected_items, expected_count): (String, String, &str) = match kind {
         SettlementKind::NodeError => (
             "Node(worker[w1],Node(Execution))".into(),
@@ -1141,8 +1135,16 @@ pub(super) async fn settlement(kind: SettlementKind) -> Result<CaseReport, Error
     );
     report.check("items", expected_items, format!("{:?}", run.state().items));
     report.check("count", expected_count, run.state().count.to_string());
-    report.check("aggregate-status", "pending", status(&run, "aggregate"));
-    report.check("aggregate-attempts", "0", attempts(&run, "aggregate"));
+    report.check(
+        "aggregate-status",
+        "pending",
+        report.node_status(&key("aggregate")),
+    );
+    report.check(
+        "aggregate-attempts",
+        "0",
+        report.node_attempts(&key("aggregate")),
+    );
     report.check(
         "aux-instances",
         "0",
@@ -1163,20 +1165,13 @@ pub(super) async fn settlement(kind: SettlementKind) -> Result<CaseReport, Error
         };
         let failed = (kind == SettlementKind::NodeError && name == "w1")
             || (kind == SettlementKind::MultiError && (name == "w1" || name == "w2"));
-        let node = run.node(instance).unwrap();
+        let actual = report.node_output(instance);
         report.check(
             format!("{name}-output"),
             if failed { "none" } else { "present" },
-            if failed {
-                if node.output().is_none() {
-                    "none"
-                } else {
-                    "present"
-                }
-            } else if node.output().is_some() {
-                "present"
-            } else {
-                "missing"
+            match actual.as_str() {
+                "none" | "missing" | "type-mismatch" => actual.as_str(),
+                _ => "present",
             },
         );
     }

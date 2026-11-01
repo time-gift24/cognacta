@@ -35,7 +35,9 @@ pub(crate) struct Remote {
     pub metrics: Option<SdkMeterProvider>,
 }
 
+#[bon::bon]
 impl Remote {
+    #[builder(start_fn = builder, finish_fn = build)]
     pub fn build(config: Config, service: String, writer: NonBlocking) -> Result<Self, Error> {
         let resource = Resource::builder_empty()
             .with_attributes(config.resource)
@@ -54,13 +56,18 @@ impl Remote {
         // Build exporters before starting SDK providers: failure leaves no partially active backend.
         let logs = logs
             .map(|s| {
-                let client = Client::new(&s, diagnostic.clone(), |body| {
-                    ExportLogsServiceResponse::decode(body).map_or(true, |response| {
-                        response.partial_success.is_some_and(|partial| {
-                            partial.rejected_log_records > 0 || !partial.error_message.is_empty()
+                let client = Client::builder()
+                    .signal(&s)
+                    .diagnostic(diagnostic.clone())
+                    .response_has_warning(|body| {
+                        ExportLogsServiceResponse::decode(body).map_or(true, |response| {
+                            response.partial_success.is_some_and(|partial| {
+                                partial.rejected_log_records > 0
+                                    || !partial.error_message.is_empty()
+                            })
                         })
                     })
-                })?;
+                    .build()?;
                 opentelemetry_otlp::LogExporter::builder()
                     .with_http()
                     .with_endpoint(s.endpoint)
@@ -75,13 +82,17 @@ impl Remote {
             .transpose()?;
         let traces = traces
             .map(|s| {
-                let client = Client::new(&s, diagnostic.clone(), |body| {
-                    ExportTraceServiceResponse::decode(body).map_or(true, |response| {
-                        response.partial_success.is_some_and(|partial| {
-                            partial.rejected_spans > 0 || !partial.error_message.is_empty()
+                let client = Client::builder()
+                    .signal(&s)
+                    .diagnostic(diagnostic.clone())
+                    .response_has_warning(|body| {
+                        ExportTraceServiceResponse::decode(body).map_or(true, |response| {
+                            response.partial_success.is_some_and(|partial| {
+                                partial.rejected_spans > 0 || !partial.error_message.is_empty()
+                            })
                         })
                     })
-                })?;
+                    .build()?;
                 opentelemetry_otlp::SpanExporter::builder()
                     .with_http()
                     .with_endpoint(s.endpoint)
@@ -96,13 +107,18 @@ impl Remote {
             .transpose()?;
         let metrics = metrics
             .map(|s| {
-                let client = Client::new(&s, diagnostic, |body| {
-                    ExportMetricsServiceResponse::decode(body).map_or(true, |response| {
-                        response.partial_success.is_some_and(|partial| {
-                            partial.rejected_data_points > 0 || !partial.error_message.is_empty()
+                let client = Client::builder()
+                    .signal(&s)
+                    .diagnostic(diagnostic)
+                    .response_has_warning(|body| {
+                        ExportMetricsServiceResponse::decode(body).map_or(true, |response| {
+                            response.partial_success.is_some_and(|partial| {
+                                partial.rejected_data_points > 0
+                                    || !partial.error_message.is_empty()
+                            })
                         })
                     })
-                })?;
+                    .build()?;
                 opentelemetry_otlp::MetricExporter::builder()
                     .with_http()
                     .with_endpoint(s.endpoint)
@@ -240,7 +256,9 @@ impl std::fmt::Debug for Client {
         f.write_str("TelemetryHttpClient")
     }
 }
+#[bon::bon]
 impl Client {
+    #[builder]
     fn new(
         signal: &Signal,
         diagnostic: Arc<Diagnostic>,
@@ -268,22 +286,7 @@ impl Client {
                 component: "telemetry HTTP",
                 source: Box::new(source),
             })?;
-        let mut headers = http::HeaderMap::new();
-        for (key, value) in &signal.headers {
-            let name = http::HeaderName::from_bytes(key.as_bytes()).map_err(|source| {
-                Error::Initialization {
-                    component: "telemetry headers",
-                    source: Box::new(source),
-                }
-            })?;
-            let mut value =
-                http::HeaderValue::from_str(value).map_err(|source| Error::Initialization {
-                    component: "telemetry headers",
-                    source: Box::new(source),
-                })?;
-            value.set_sensitive(true);
-            headers.insert(name, value);
-        }
+        let mut headers = signal.headers.clone();
         headers.insert(
             http::header::CONTENT_TYPE,
             http::HeaderValue::from_static("application/x-protobuf"),

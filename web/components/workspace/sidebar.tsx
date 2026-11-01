@@ -34,6 +34,7 @@ import { Tooltip } from "@/components/arc/tooltip/tooltip";
 import { motionTokens } from "@/components/arc/lib/motion-tokens";
 import { useTheme } from "@/components/theme-provider";
 import { useSessions } from "./session-provider";
+import { searchSidebar } from "./sidebar-search";
 import { usePinnedSessions } from "./use-pinned-sessions";
 import { formatBytes, useStorageUsage } from "./use-storage-usage";
 import {
@@ -512,36 +513,14 @@ export function WorkspaceSidebar({
 
   function changeQuery(value: string) {
     setQuery(value);
-    const text = value.trim().toLowerCase();
-    if (!text) {
+    const { q, totalResults: count } = searchSidebar({
+      ...searchState,
+      query: value,
+    });
+    if (!q) {
       announce(t("showingAll"));
       return;
     }
-    const includes = (title: string) => title.toLowerCase().includes(text);
-    let count =
-      navItems.filter((item) => includes(item.label)).length +
-      pins.pinned.filter((session) => includes(session.title)).length;
-    for (const project of projects) {
-      const all = sessions.filter(
-        (session) =>
-          session.projectId === project.id &&
-          !session.archived &&
-          !pins.pinnedIds.has(session.id),
-      );
-      const titleMatch = includes(project.title);
-      const sessionMatches = all.filter((session) =>
-        includes(session.title),
-      );
-      if (titleMatch) count += all.length + 1;
-      else if (sessionMatches.length) count += sessionMatches.length + 1;
-    }
-    count += sessions.filter(
-      (session) =>
-        !session.projectId &&
-        !session.archived &&
-        !pins.pinnedIds.has(session.id) &&
-        includes(session.title),
-    ).length;
     announce(
       count === 0 ? t("searchNone") : t("searchResults", { count }),
     );
@@ -609,33 +588,7 @@ export function WorkspaceSidebar({
   }
 
   function searchFirstResult() {
-    const text = query.trim().toLowerCase();
-    if (!text) return;
-    const nav = navItems.find((item) =>
-      item.label.toLowerCase().includes(text),
-    );
-    if (nav) return selectNav(nav.href);
-    const pinned = pins.pinned.find((session) =>
-      session.title.toLowerCase().includes(text),
-    );
-    if (pinned) return selectSession(pinned);
-    const projectSession = projects
-      .flatMap((project) =>
-        sessions.filter(
-          (session) =>
-            session.projectId === project.id &&
-            !session.archived &&
-            session.title.toLowerCase().includes(text),
-        ),
-      )[0];
-    if (projectSession) return selectSession(projectSession);
-    const recent = sessions.find(
-      (session) =>
-        !session.projectId &&
-        !session.archived &&
-        session.title.toLowerCase().includes(text),
-    );
-    if (recent) return selectSession(recent);
+    if (q && firstHref) selectNav(firstHref);
   }
 
   function onSearchKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
@@ -674,50 +627,25 @@ export function WorkspaceSidebar({
     announce(t("modeChanged", { mode: tModes(next) }));
   }
 
-  const q = query.trim();
-  const includes = (title: string) =>
-    title.toLowerCase().includes(q.toLowerCase());
-  const navMatches = navItems.filter((item) => !q || includes(item.label));
-  const pinnedMatches = pins.pinned.filter(
-    (session) => !q || includes(session.title),
-  );
   const pinnedIds = pins.pinnedIds;
-  const projectRows = projects
-    .map((project, index) => {
-      const all = sessions.filter(
-        (session) =>
-          session.projectId === project.id &&
-          !session.archived &&
-          !pinnedIds.has(session.id),
-      );
-      const titleMatch = !q || includes(project.title);
-      const sessionMatches = q
-        ? all.filter((session) => includes(session.title))
-        : all;
-      return {
-        project,
-        index,
-        sessions: titleMatch ? all : sessionMatches,
-        held: all.some((session) => session.id === activeSessionId),
-        visible: !q || titleMatch || sessionMatches.length > 0,
-        expanded: q
-          ? titleMatch || sessionMatches.length > 0
-          : !!openProjects[project.id],
-      };
-    })
-    .filter((row) => row.visible);
-  const recent = sessions.filter(
-    (session) =>
-      !session.projectId && !session.archived && !pinnedIds.has(session.id),
-  );
-  const recentMatches = q
-    ? recent.filter((session) => includes(session.title))
-    : recent;
-  const totalResults =
-    navMatches.length +
-    pinnedMatches.length +
-    projectRows.reduce((count, row) => count + row.sessions.length + 1, 0) +
-    recentMatches.length;
+  const searchState = {
+    navItems,
+    sessions,
+    projects,
+    pinned: pins.pinned,
+    pinnedIds,
+    activeSessionId,
+    openProjects,
+  };
+  const {
+    q,
+    navMatches,
+    pinnedMatches,
+    projectRows,
+    recentMatches,
+    totalResults,
+    firstHref,
+  } = searchSidebar({ ...searchState, query });
   const empty = !!q && totalResults === 0;
   const tones = ["green", "blue", "violet", "amber", "coral", "slate"];
 

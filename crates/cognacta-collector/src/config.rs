@@ -5,7 +5,7 @@ use std::{collections::HashMap, time::Duration};
 
 pub(crate) struct Signal {
     pub endpoint: String,
-    pub headers: HashMap<String, String>,
+    pub headers: http::HeaderMap,
     pub timeout: Duration,
 }
 
@@ -97,7 +97,7 @@ impl Config {
                     .ok_or_else(|| invalid("OTEL_EXPORTER_OTLP_*_TIMEOUT", "必须为正整数毫秒"))?,
                 None => Duration::from_secs(5),
             };
-            let mut headers = HashMap::new();
+            let mut headers = http::HeaderMap::new();
             if let Some(raw) = setting("HEADERS") {
                 for header in raw.split(',').filter(|s| !s.trim().is_empty()) {
                     let (key, value) = header.split_once('=').ok_or_else(|| {
@@ -118,10 +118,12 @@ impl Config {
                             source: Some(Box::new(source)),
                         },
                     )?;
-                    http::HeaderValue::from_str(&value).map_err(|source| Error::InvalidConfig {
-                        field: "OTEL_EXPORTER_OTLP_*_HEADERS",
-                        reason: "头值无效",
-                        source: Some(Box::new(source)),
+                    let mut value = http::HeaderValue::from_str(&value).map_err(|source| {
+                        Error::InvalidConfig {
+                            field: "OTEL_EXPORTER_OTLP_*_HEADERS",
+                            reason: "头值无效",
+                            source: Some(Box::new(source)),
+                        }
                     })?;
                     // Protocol framing belongs to the exporter, never to authentication config.
                     if matches!(
@@ -133,7 +135,8 @@ impl Config {
                             "不得覆盖传输协议头",
                         ));
                     }
-                    headers.insert(key.to_string(), value);
+                    value.set_sensitive(true);
+                    headers.insert(key, value);
                 }
             }
             config.signals[index] = Some(Signal {
@@ -210,7 +213,7 @@ mod tests {
                 "https://example.test/custom",
             ),
             ("OTEL_EXPORTER_OTLP_HEADERS", "key=general"),
-            ("OTEL_EXPORTER_OTLP_LOGS_HEADERS", "key=local%20value"),
+            ("OTEL_EXPORTER_OTLP_LOGS_HEADERS", "KeY=local%20value"),
             ("OTEL_EXPORTER_OTLP_TIMEOUT", "12"),
         ]))
         .unwrap();
@@ -226,6 +229,7 @@ mod tests {
             config.signals[0].as_ref().unwrap().headers["key"],
             "local value"
         );
+        assert!(config.signals[0].as_ref().unwrap().headers["key"].is_sensitive());
         assert_eq!(
             config.signals[2].as_ref().unwrap().timeout,
             Duration::from_millis(12)

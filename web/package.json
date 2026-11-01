@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
+    "test": "bun test components/workspace",
     "cf:build": "opennextjs-cloudflare build",
     "preview": "bun run cf:build && opennextjs-cloudflare preview",
     "deploy": "bun run cf:build && opennextjs-cloudflare deploy",

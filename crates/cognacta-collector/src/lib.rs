@@ -74,7 +74,13 @@ impl Collector {
                 let mut local = Local::new();
                 let remote = config::environment()
                     .and_then(|env| config::Config::parse(&env))
-                    .and_then(|config| remote::Remote::build(config, service, local.writer.clone()))
+                    .and_then(|config| {
+                        remote::Remote::builder()
+                            .config(config)
+                            .service(service)
+                            .writer(local.writer.clone())
+                            .build()
+                    })
                     .unwrap_or_else(|error| {
                         let _ = writeln!(local.writer, "WARN collector.local_only: {error}");
                         remote::Remote::default()

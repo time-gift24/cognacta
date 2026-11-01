@@ -773,3 +773,11 @@ mod tests {
         ));
     }
 }
+
+#[cfg(test)]
+#[path = "kernel_tests.rs"]
+mod kernel_tests;
+
+#[cfg(test)]
+#[path = "contract_tests.rs"]
+mod contract_tests;

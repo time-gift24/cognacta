@@ -4,9 +4,7 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering as AtomicOrdering},
 };
 
-use cognacta_core::{
-    Add, Append, Error, Merge, MergeError, Override, Reducer, Sort, State, WritePolicy,
-};
+use crate::{Add, Append, Error, Merge, MergeError, Override, Reducer, Sort, State, WritePolicy};
 
 #[derive(State)]
 struct BatchState {

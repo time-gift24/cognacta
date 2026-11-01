@@ -3,7 +3,7 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
 };
 
-use cognacta_core::{
+use crate::{
     Add, Append, Directive, Edge, Error, Graph, GraphError, Input, MergeError, Node, NodeContext,
     NodeError, NodeId, NodeInstance, NodeKey, NodeStatus, Outcome, Override, RunError, RunStatus,
     Scheduler, SchedulerConfig, State,

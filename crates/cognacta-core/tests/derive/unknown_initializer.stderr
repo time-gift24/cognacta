@@ -1,0 +1,5 @@
+error: expected `init`
+ --> tests/derive/unknown_initializer.rs:5:35
+  |
+5 |     #[reducer(cognacta_core::Add, typo = cognacta_core::Add)]
+  |                                   ^^^^

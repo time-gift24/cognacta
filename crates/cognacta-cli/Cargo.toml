@@ -8,9 +8,10 @@ repository.workspace = true
 
 [features]
 default = []
-dev = ["dep:cognacta-core", "dep:tokio"]
+dev = ["dep:cognacta-core", "dep:tokio", "dep:bon"]
 
 [dependencies]
+bon = { workspace = true, optional = true }
 cognacta-collector.workspace = true
 cognacta-core = { workspace = true, optional = true }
 tracing.workspace = true

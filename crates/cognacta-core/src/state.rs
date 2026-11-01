@@ -254,3 +254,7 @@ mod tests {
         assert!(EVENTS.lock().unwrap().is_empty());
     }
 }
+
+#[cfg(test)]
+#[path = "state_tests.rs"]
+mod state_tests;

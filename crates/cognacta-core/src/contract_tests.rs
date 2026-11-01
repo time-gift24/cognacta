@@ -6,7 +6,7 @@ use std::{
     },
 };
 
-use cognacta_core::{
+use crate::{
     DeliverTarget, Directive, DirectiveError, Edge, Error, Graph, Input, Join, Node, NodeContext,
     NodeId, NodeInstance, NodeKey, NodeStatus, Outcome, Reducer, RunError, RunStatus, Scheduler,
     SchedulerConfig, SharedValue, State, WritePolicy,

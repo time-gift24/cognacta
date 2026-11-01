@@ -42,7 +42,15 @@ export interface ChatTool {
   color?: string;
 }
 
-export interface AiChatAttachment { id: string; name: string; size: number; type?: string }
+export interface AiChatAttachment {
+  id: string;
+  name: string;
+  size: number;
+  type?: string;
+  /** Message-time attachment snapshot, retained when a turn is edited or replayed. */
+  content?: string;
+  url?: string;
+}
 
 export interface AiChatMessage {
   id?: string;

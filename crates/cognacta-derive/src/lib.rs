@@ -44,7 +44,10 @@ impl Parse for ReducerAttribute {
         let reducer = input.parse()?;
         let init = if input.peek(Token![,]) {
             input.parse::<Token![,]>()?;
-            input.parse::<Ident>()?;
+            let name = input.parse::<Ident>()?;
+            if name != "init" {
+                return Err(syn::Error::new(name.span(), "expected `init`"));
+            }
             input.parse::<Token![=]>()?;
             Some(input.parse()?)
         } else {
