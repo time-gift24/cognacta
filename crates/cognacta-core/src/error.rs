@@ -4,6 +4,8 @@ use crate::{NodeId, NodeKey};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("call error: {0}")]
+    Call(#[from] CallError),
     #[error("graph error: {0}")]
     Graph(#[from] GraphError),
     #[error("configuration error: {0}")]
@@ -27,6 +29,16 @@ impl Error {
 
 #[derive(Debug, thiserror::Error)]
 pub enum GraphError {
+    #[error("unknown return node {node}")]
+    UnknownReturnNode { node: NodeId },
+    #[error("invalid return node {node}")]
+    InvalidReturnNode { node: NodeId },
+    #[error("return type mismatch at {node}: expected {expected_type}, got {actual_type}")]
+    ReturnTypeMismatch {
+        node: NodeId,
+        expected_type: &'static str,
+        actual_type: &'static str,
+    },
     #[error("duplicate node {node}")]
     DuplicateNode { node: NodeId },
     #[error("unknown edge endpoint {node}")]
@@ -54,6 +66,13 @@ pub enum ConfigError {
 
 #[derive(Debug, thiserror::Error)]
 pub enum InputError {
+    #[error("graph entry set mismatch")]
+    EntrySetMismatch {
+        missing: Vec<NodeId>,
+        unexpected: Vec<NodeId>,
+    },
+    #[error("missing entry {node}")]
+    MissingEntry { node: NodeId },
     #[error("missing input source {source_node}")]
     MissingSource { source_node: NodeId },
     #[error("{operation} expected one {expected_type} from {source_node:?}, got {actual}")]
@@ -107,6 +126,8 @@ pub enum DirectiveError {
 
 #[derive(Debug, thiserror::Error)]
 pub enum RunError {
+    #[error("graph return value missing at {node}")]
+    MissingOutput { node: NodeId },
     #[error("node {key} failed")]
     Node {
         key: NodeKey,
@@ -142,4 +163,31 @@ impl fmt::Display for NodeKey {
             Self::Instance { template, key } => write!(formatter, "{template}[{key}]"),
         }
     }
+}
+
+/// Stable invocation failures; sources remain diagnostic, never automatic retry advice.
+#[derive(Debug, thiserror::Error)]
+pub enum CallError {
+    #[error("invalid graph input")]
+    Input {
+        #[source]
+        source: Box<dyn StdError + Send + Sync + 'static>,
+    },
+    #[error("maximum run depth exceeded")]
+    DepthExceeded {
+        parent_depth: usize,
+        max_depth: usize,
+    },
+    #[error("state initialization failed")]
+    Initialization {
+        #[source]
+        source: Box<dyn StdError + Send + Sync + 'static>,
+    },
+    #[error("execution failed")]
+    Execution {
+        #[source]
+        source: Box<dyn StdError + Send + Sync + 'static>,
+    },
+    #[error("graph return value missing")]
+    MissingOutput,
 }

@@ -1,80 +1,41 @@
-//! In-memory graph execution with typed state updates and deterministic wave settlement.
+//! Typed graph execution with independent per-run state, resources and depth budgets.
+//!
+//! A graph is a reusable definition. Each invocation validates explicit entries, initializes
+//! independent State and returns a typed result only after every wave settles. Resources are
+//! explicit Arc handles; recursive graph definitions should read them from `RunContext` rather
+//! than capture them permanently in nodes or initialization closures.
 //!
 //! ```
-//! use std::sync::Arc;
-//! use cognacta_core::{
-//!     Edge, Error, Graph, Input, Node, NodeContext, NodeId, NodeInstance, Outcome,
-//!     RunStatus, Scheduler, SchedulerConfig, SharedValue, State,
-//! };
-//!
-//! #[derive(State)]
-//! struct LengthState {
-//!     #[reducer(cognacta_core::Override)]
-//!     length: u32,
-//! }
-//!
+//! use std::{collections::HashMap, sync::Arc};
+//! use cognacta_core::*;
+//! #[derive(Default, State)]
+//! struct Data { #[reducer(Override)] count: usize }
 //! struct Count;
-//! impl NodeInstance<LengthState> for Count {
-//!     type Output = u32;
-//!     async fn run(
-//!         &self,
-//!         input: &Input,
-//!         _ctx: NodeContext<LengthState>,
-//!     ) -> Result<Outcome<LengthState, u32>, Error> {
-//!         let length = input.entry::<String>()?.len() as u32;
-//!         Ok(Outcome {
-//!             value: Some(length),
-//!             state_delta: LengthStateDelta { length: Some(length) },
-//!             directive: None,
-//!         })
+//! impl NodeInstance<Data> for Count {
+//!     type Output = usize;
+//!     async fn run(&self, input: &Input, _: NodeContext<Data>) -> Result<Outcome<Data, usize>, Error> {
+//!         let count = input.entry::<String>()?.len();
+//!         Ok(Outcome { value: Some(Arc::new(count)), state_delta: DataDelta { count: Some(count) }, directive: None })
 //!     }
 //! }
-//!
-//! struct Render;
-//! impl NodeInstance<LengthState> for Render {
-//!     type Output = String;
-//!     async fn run(
-//!         &self,
-//!         input: &Input,
-//!         _ctx: NodeContext<LengthState>,
-//!     ) -> Result<Outcome<LengthState, String>, Error> {
-//!         let length = input.one::<u32>(&NodeId::new("count"))?;
-//!         Ok(Outcome {
-//!             value: Some(format!("len={length}")),
-//!             state_delta: LengthStateDelta::default(),
-//!             directive: None,
-//!         })
-//!     }
-//! }
-//!
 //! # #[tokio::main(flavor = "current_thread")]
-//! # async fn main() {
-//! let count = NodeId::new("count");
-//! let render = NodeId::new("render");
-//! let graph = Graph::builder()
-//!     .nodes(vec![
-//!         Node::new(count.clone(), Count).writes(vec![LengthStateField::Length]),
-//!         Node::new(render.clone(), Render).terminal(true),
-//!     ])
-//!     .edges(vec![Edge { source: count.clone(), target: render.clone(), when: None }])
-//!     .entries(vec![count])
-//!     .build()
-//!     .unwrap();
-//! let scheduler = Scheduler::new(SchedulerConfig::new(2, 2).unwrap());
-//! let run = scheduler.run_builder()
-//!     .graph(&graph)
-//!     .run_id("length-doc".into())
-//!     .initial_state(LengthState { length: 0 })
-//!     .entry_values(vec![Arc::new(String::from("hello")) as SharedValue])
-//!     .call()
-//!     .await;
-//! assert_eq!(run.status(), RunStatus::Completed);
-//! assert_eq!(run.state().length, 5);
+//! # async fn main() -> Result<(), Error> {
+//! let entry = NodeId::new("count");
+//! let graph = Graph::<Data, usize>::builder()
+//!     .nodes(vec![Node::new(entry.clone(), Count)])
+//!     .edges(vec![]).entries(vec![]).return_node(entry.clone()).build()?;
+//! let input = GraphInput::new(HashMap::from([(entry, Input::new(vec![Arc::new("hello".to_owned())]))]));
+//! let context = RunContext::root("root".into(), 4, Arc::new(()));
+//! let run = LocalScheduler::new(SchedulerConfig::new(1, 4)?).run(&graph, input, context).await?;
+//! assert_eq!(run.state().count, 5);
+//! assert_eq!(*run.into_result()?, 5);
+//! # Ok(())
 //! # }
 //! ```
 
 extern crate self as cognacta_core;
 
+mod context;
 mod error;
 mod graph;
 mod input;
@@ -83,16 +44,19 @@ mod scheduler;
 mod state;
 
 pub use cognacta_derive::State;
+pub use context::{RunContext, RunContextRootBuilder, run_context_root_builder};
 pub use error::{
-    ConfigError, DirectiveError, Error, GraphError, InputError, MergeError, NodeError, RunError,
+    CallError, ConfigError, DirectiveError, Error, GraphError, InputError, MergeError, NodeError,
+    RunError,
 };
 pub use graph::{
-    DirectiveTarget, Edge, Graph, GraphBuilder, Join, Node, NodeContext, Outcome, graph_builder,
+    DirectiveTarget, Edge, Graph, GraphBuilder, GraphWithInitializerBuilder, Join, Node,
+    NodeContext, Outcome, graph_builder, graph_with_initializer_builder,
 };
-pub use input::{Input, Origin, SharedValue, SourceRef};
-pub use run::{NodeRun, NodeStatus, Run, RunOutput, RunStatus};
+pub use input::{GraphInput, Input, Origin, SharedValue, SourceRef};
+pub use run::{NodeRun, NodeStatus, Run, RunStatus};
 pub use scheduler::{
-    Scheduler, SchedulerConfig, SchedulerConfigBuilder, SchedulerRunBuilder,
+    LocalScheduler, Scheduler, SchedulerConfig, SchedulerConfigBuilder, SchedulerRunBuilder,
     scheduler_config_builder, scheduler_run_builder,
 };
 pub use state::{Add, Append, Merge, Override, Reducer, Sort, State, StateField, WritePolicy};
@@ -135,12 +99,18 @@ pub struct DeliverTarget {
     pub key: String,
 }
 
-pub trait NodeInstance<S: State>: Send + Sync + 'static {
+pub trait NodeInstance<S: State, R: Send + Sync + 'static = ()>: Send + Sync + 'static {
     type Output: Send + Sync + 'static;
 
     fn run<'a>(
         &'a self,
         input: &'a Input,
-        ctx: NodeContext<S>,
+        ctx: NodeContext<S, R>,
     ) -> impl Future<Output = Result<Outcome<S, Self::Output>, Error>> + Send + 'a;
 }
+
+#[cfg(test)]
+mod subgraph_tests;
+
+#[cfg(test)]
+mod observation_tests;

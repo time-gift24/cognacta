@@ -21,6 +21,7 @@ struct Cli {
 #[cfg(feature = "dev")]
 #[derive(Debug, clap::Subcommand)]
 enum Command {
+    /// Verify graph cases and report their single typed return after all work settles.
     GraphCheck {
         #[arg(value_enum)]
         scenario: graph_check::Scenario,

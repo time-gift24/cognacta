@@ -1,0 +1,18 @@
+error[E0277]: `Cell<{integer}>` cannot be shared between threads safely
+ --> tests/graph/resource_not_sync.rs:2:56
+  |
+2 | fn main() { let _ = RunContext::root("root".into(), 1, std::sync::Arc::new(std::cell::Cell::new(1))); }
+  |                     ----------------                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Cell<{integer}>` cannot be shared between threads safely
+  |                     |
+  |                     required by a bound introduced by this call
+  |
+  = help: the trait `Sync` is not implemented for `Cell<{integer}>`
+  = note: if you want to do aliasing and mutation between multiple threads, use `std::sync::RwLock`
+note: required by a bound in `cognacta_core::RunContext::<R>::root`
+ --> src/context.rs
+  |
+  | impl<R: Send + Sync + 'static> RunContext<R> {
+  |                ^^^^ required by this bound in `RunContext::<R>::root`
+...
+  |     pub fn root(run_id: String, max_depth: usize, resources: Arc<R>) -> Self {
+  |            ---- required by a bound in this associated function

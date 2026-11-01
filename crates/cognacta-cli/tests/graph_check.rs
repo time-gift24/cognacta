@@ -69,6 +69,17 @@ fn telemetry_failure_does_not_change_graph_report() {
     let unavailable = finish(remote.spawn().unwrap());
     assert_eq!(baseline.status, unavailable.status);
     assert_eq!(baseline.stdout, unavailable.stdout);
+    for filter in ["off", "debug"] {
+        let filtered = finish(
+            command()
+                .args(["graph-check", "chain"])
+                .env("RUST_LOG", filter)
+                .spawn()
+                .unwrap(),
+        );
+        assert_eq!(baseline.status, filtered.status);
+        assert_eq!(baseline.stdout, filtered.stdout);
+    }
 }
 
 #[cfg(all(feature = "dev", unix))]
@@ -80,18 +91,53 @@ fn report_io_failure_exits_one() {
     assert_eq!(output.status.code(), Some(1));
 }
 
-#[cfg(feature = "dev")]
+#[cfg(all(feature = "dev", unix))]
 #[test]
 fn stderr_backpressure_does_not_change_graph_report() {
-    let baseline = finish(command().args(["graph-check", "chain"]).spawn().unwrap());
-    let mut remote = command();
-    remote
-        .args(["graph-check", "chain"])
-        .env("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:1")
-        .env("OTEL_EXPORTER_OTLP_PROTOCOL", "invalid");
-    let mut child = remote.spawn().unwrap();
-    drop(child.stderr.take());
-    let output = finish(child);
-    assert_eq!(baseline.status, output.status);
-    assert_eq!(baseline.stdout, output.stdout);
+    use std::{
+        io::Write,
+        os::{fd::OwnedFd, unix::net::UnixStream},
+        time::{Duration, Instant},
+    };
+
+    let baseline = finish(command().args(["graph-check", "all"]).spawn().unwrap());
+    assert!(baseline.status.success());
+    for remote in [false, true] {
+        let (mut writer, reader) = UnixStream::pair().unwrap();
+        writer.set_nonblocking(true).unwrap();
+        let mut filled = 0;
+        loop {
+            match writer.write(&[b'x'; 8192]) {
+                Ok(bytes) => filled += bytes,
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(error) => panic!("cannot fill stderr buffer: {error}"),
+            }
+            assert!(filled < 8 * 1024 * 1024, "stderr buffer never fills");
+        }
+        assert!(filled > 0);
+        writer.set_nonblocking(false).unwrap();
+        let mut blocked = command();
+        blocked
+            .args(["graph-check", "all"])
+            .env("RUST_LOG", "debug")
+            .stderr(Stdio::from(OwnedFd::from(writer)));
+        if remote {
+            blocked.env("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:1");
+        }
+        let started = Instant::now();
+        // Keep the saturated stderr peer open and unread until process exit.
+        let output = finish(blocked.spawn().unwrap());
+        let elapsed = started.elapsed();
+        drop(reader);
+        assert_eq!(baseline.status, output.status);
+        assert_eq!(baseline.stdout, output.stdout);
+        assert!(
+            elapsed >= Duration::from_secs(2),
+            "shutdown did not encounter the blocked writer"
+        );
+        assert!(
+            elapsed < Duration::from_secs(5),
+            "shutdown exceeded its shared budget: {elapsed:?}"
+        );
+    }
 }

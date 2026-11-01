@@ -1,3 +1,4 @@
+use crate::{GraphInput, RunContext};
 use std::{
     cell::Cell,
     sync::{
@@ -7,12 +8,12 @@ use std::{
 };
 
 use crate::{
-    DeliverTarget, Directive, DirectiveError, Edge, Error, Graph, Input, Join, Node, NodeContext,
-    NodeId, NodeInstance, NodeKey, NodeStatus, Outcome, Reducer, RunError, RunStatus, Scheduler,
-    SchedulerConfig, SharedValue, State, WritePolicy,
+    DeliverTarget, Directive, DirectiveError, Edge, Error, Graph, Input, Join, LocalScheduler,
+    Node, NodeContext, NodeId, NodeInstance, NodeKey, NodeStatus, Outcome, Reducer, RunError,
+    RunStatus, SchedulerConfig, SharedValue, State, WritePolicy,
 };
 
-#[derive(State)]
+#[derive(Default, State)]
 struct EmptyState {}
 
 struct NonClone(u32);
@@ -26,7 +27,7 @@ impl NodeInstance<EmptyState> for Produce {
         _ctx: NodeContext<EmptyState>,
     ) -> Result<Outcome<EmptyState, NonClone>, Error> {
         Ok(Outcome {
-            value: Some(NonClone(7)),
+            value: Some(Arc::new(NonClone(7))),
             state_delta: EmptyStateDelta::default(),
             directive: None,
         })
@@ -47,7 +48,7 @@ impl NodeInstance<EmptyState> for Consume {
         assert_eq!(input.origins(&source).len(), 1);
         assert!(matches!(input.one::<String>(&source), Err(Error::Input(_))));
         Ok(Outcome {
-            value: Some(value.0),
+            value: Some(Arc::new(value.0)),
             state_delta: EmptyStateDelta::default(),
             directive: None,
         })
@@ -56,10 +57,10 @@ impl NodeInstance<EmptyState> for Consume {
 
 #[tokio::test]
 async fn non_clone_output_is_shared_once_across_duplicate_edges() {
-    let graph = Graph::build(
+    let graph = Graph::<_, u32>::build(
         vec![
             Node::new(NodeId::new("source"), Produce),
-            Node::new(NodeId::new("target"), Consume).terminal(true),
+            Node::new(NodeId::new("target"), Consume),
         ],
         vec![
             Edge {
@@ -79,16 +80,26 @@ async fn non_clone_output_is_shared_once_across_duplicate_edges() {
             },
         ],
         vec![NodeId::new("source")],
+        NodeId::new("target"),
     )
     .unwrap();
-    let run = Scheduler::new(SchedulerConfig::new(1, 2).unwrap())
-        .run(&graph, "input".into(), EmptyState {}, vec![])
-        .await;
-    assert_eq!(run.status(), RunStatus::Completed, "{:?}", run.errors());
-    let output = run.final_output().unwrap().values[&NodeId::new("target")]
-        .downcast_ref::<u32>()
+    let run = LocalScheduler::new(SchedulerConfig::new(1, 2).unwrap())
+        .run(
+            &graph,
+            GraphInput::new(
+                graph
+                    .entries
+                    .iter()
+                    .map(|id| (id.clone(), Input::new(vec![])))
+                    .collect(),
+            ),
+            RunContext::root("input".into(), 4, Arc::new(())),
+        )
+        .await
         .unwrap();
-    assert_eq!(*output, 7);
+    assert_eq!(run.status(), RunStatus::Completed, "{:?}", run.errors());
+    let output = run.final_output().unwrap();
+    assert_eq!(**output, 7);
 }
 
 struct Planner;
@@ -105,7 +116,7 @@ impl NodeInstance<EmptyState> for Planner {
             key: key.into(),
         };
         Ok(Outcome {
-            value: Some("plan".into()),
+            value: Some(Arc::new("plan".into())),
             state_delta: EmptyStateDelta::default(),
             directive: Some(Directive::Deliver(vec![delivery("same"), delivery("same")])),
         })
@@ -121,7 +132,7 @@ impl NodeInstance<EmptyState> for Worker {
         _ctx: NodeContext<EmptyState>,
     ) -> Result<Outcome<EmptyState, String>, Error> {
         Ok(Outcome {
-            value: Some("work".into()),
+            value: Some(Arc::new("work".into())),
             state_delta: EmptyStateDelta::default(),
             directive: None,
         })
@@ -130,18 +141,30 @@ impl NodeInstance<EmptyState> for Worker {
 
 #[tokio::test]
 async fn duplicate_instance_key_rejects_the_entire_route_batch() {
-    let graph = Graph::build(
+    let graph = Graph::<_, String>::build(
         vec![
             Node::new(NodeId::new("planner"), Planner),
             Node::new(NodeId::new("worker"), Worker).template(true),
         ],
         vec![],
         vec![NodeId::new("planner")],
+        NodeId::new("planner"),
     )
     .unwrap();
-    let run = Scheduler::new(SchedulerConfig::new(1, 2).unwrap())
-        .run(&graph, "duplicate".into(), EmptyState {}, vec![])
-        .await;
+    let run = LocalScheduler::new(SchedulerConfig::new(1, 2).unwrap())
+        .run(
+            &graph,
+            GraphInput::new(
+                graph
+                    .entries
+                    .iter()
+                    .map(|id| (id.clone(), Input::new(vec![])))
+                    .collect(),
+            ),
+            RunContext::root("duplicate".into(), 4, Arc::new(())),
+        )
+        .await
+        .unwrap();
     assert!(run.instances(&NodeId::new("worker")).is_empty());
     assert!(matches!(
         run.errors(),
@@ -161,7 +184,7 @@ impl NodeInstance<EmptyState> for TransitionSource {
         _ctx: NodeContext<EmptyState>,
     ) -> Result<Outcome<EmptyState, String>, Error> {
         Ok(Outcome {
-            value: Some("source".into()),
+            value: Some(Arc::new("source".into())),
             state_delta: EmptyStateDelta::default(),
             directive: Some(Directive::Transition {
                 target: NodeId::new("target"),
@@ -181,7 +204,7 @@ impl NodeInstance<EmptyState> for LastTransition {
         _ctx: NodeContext<EmptyState>,
     ) -> Result<Outcome<EmptyState, String>, Error> {
         Ok(Outcome {
-            value: Some("last".into()),
+            value: Some(Arc::new("last".into())),
             state_delta: EmptyStateDelta::default(),
             directive: Some(Directive::Transition {
                 target: NodeId::new("target"),
@@ -203,7 +226,7 @@ impl NodeInstance<EmptyState> for TransitionTarget {
         assert!(input.one::<u32>(&NodeId::new("first")).is_err());
         let last = input.one::<u32>(&NodeId::new("last"))?;
         Ok(Outcome {
-            value: Some(*last),
+            value: Some(Arc::new(*last)),
             state_delta: EmptyStateDelta::default(),
             directive: None,
         })
@@ -212,11 +235,11 @@ impl NodeInstance<EmptyState> for TransitionTarget {
 
 #[tokio::test]
 async fn last_transition_replaces_payload_and_permit() {
-    let graph = Graph::build(
+    let graph = Graph::<_, u32>::build(
         vec![
             Node::new(NodeId::new("first"), TransitionSource),
             Node::new(NodeId::new("last"), LastTransition),
-            Node::new(NodeId::new("target"), TransitionTarget).terminal(true),
+            Node::new(NodeId::new("target"), TransitionTarget),
         ],
         vec![
             Edge {
@@ -231,11 +254,23 @@ async fn last_transition_replaces_payload_and_permit() {
             },
         ],
         vec![NodeId::new("first"), NodeId::new("last")],
+        NodeId::new("target"),
     )
     .unwrap();
-    let run = Scheduler::new(SchedulerConfig::new(2, 2).unwrap())
-        .run(&graph, "last".into(), EmptyState {}, vec![])
-        .await;
+    let run = LocalScheduler::new(SchedulerConfig::new(2, 2).unwrap())
+        .run(
+            &graph,
+            GraphInput::new(
+                graph
+                    .entries
+                    .iter()
+                    .map(|id| (id.clone(), Input::new(vec![])))
+                    .collect(),
+            ),
+            RunContext::root("last".into(), 4, Arc::new(())),
+        )
+        .await
+        .unwrap();
     assert_eq!(run.status(), RunStatus::Completed, "{:?}", run.errors());
     let target = run.node(&NodeKey::Static(NodeId::new("target"))).unwrap();
     assert_eq!(target.attempts(), 1);
@@ -259,18 +294,31 @@ impl NodeInstance<EmptyState> for NoOutput {
 }
 
 #[tokio::test]
-async fn completed_without_values_has_an_empty_output_mapping() {
-    let graph = Graph::build(
-        vec![Node::new(NodeId::new("empty"), NoOutput).terminal(true)],
+async fn completed_without_values_reports_missing_output() {
+    let graph = Graph::<_, String>::build(
+        vec![Node::new(NodeId::new("empty"), NoOutput)],
         vec![],
         vec![],
+        NodeId::new("empty"),
     )
     .unwrap();
-    let run = Scheduler::new(SchedulerConfig::new(1, 1).unwrap())
-        .run(&graph, "empty".into(), EmptyState {}, vec![])
-        .await;
-    assert_eq!(run.status(), RunStatus::Completed);
-    assert!(run.final_output().unwrap().values.is_empty());
+    let run = LocalScheduler::new(SchedulerConfig::new(1, 1).unwrap())
+        .run(
+            &graph,
+            GraphInput::new(
+                graph
+                    .entries
+                    .iter()
+                    .map(|id| (id.clone(), Input::new(vec![])))
+                    .collect(),
+            ),
+            RunContext::root("empty".into(), 4, Arc::new(())),
+        )
+        .await
+        .unwrap();
+    assert_eq!(run.status(), RunStatus::Failed);
+    assert!(run.final_output().is_none());
+    assert!(matches!(run.errors(), [RunError::MissingOutput { .. }]));
     let node = run.node(&NodeKey::Static(NodeId::new("empty"))).unwrap();
     assert_eq!(node.status(), NodeStatus::Completed);
 }
@@ -291,7 +339,7 @@ impl Reducer<u32> for CellReducer {
     }
 }
 
-#[derive(State)]
+#[derive(Default, State)]
 struct CellState {
     #[reducer(CellReducer)]
     count: u32,
@@ -306,7 +354,7 @@ impl NodeInstance<CellState> for CellNode {
         _ctx: NodeContext<CellState>,
     ) -> Result<Outcome<CellState, String>, Error> {
         Ok(Outcome {
-            value: Some("cell".into()),
+            value: Some(Arc::new("cell".into())),
             state_delta: CellStateDelta {
                 count: Some(Cell::new(9)),
             },
@@ -317,15 +365,27 @@ impl NodeInstance<CellState> for CellNode {
 
 #[tokio::test]
 async fn send_but_not_sync_delta_crosses_the_node_boundary() {
-    let graph = Graph::build(
-        vec![Node::new(NodeId::new("cell"), CellNode).terminal(true)],
+    let graph = Graph::<_, String>::build(
+        vec![Node::new(NodeId::new("cell"), CellNode)],
         vec![],
         vec![],
+        NodeId::new("cell"),
     )
     .unwrap();
-    let run = Scheduler::new(SchedulerConfig::new(1, 1).unwrap())
-        .run(&graph, "cell".into(), CellState { count: 0 }, vec![])
-        .await;
+    let run = LocalScheduler::new(SchedulerConfig::new(1, 1).unwrap())
+        .run(
+            &graph,
+            GraphInput::new(
+                graph
+                    .entries
+                    .iter()
+                    .map(|id| (id.clone(), Input::new(vec![])))
+                    .collect(),
+            ),
+            RunContext::root("cell".into(), 4, Arc::new(())),
+        )
+        .await
+        .unwrap();
     assert_eq!(run.status(), RunStatus::Completed, "{:?}", run.errors());
     assert_eq!(run.state().count, 9);
 }
@@ -347,7 +407,7 @@ impl NodeInstance<EmptyState> for RearmNode {
             .unwrap()
             .push(input.entry::<String>()?.len());
         Ok(Outcome {
-            value: Some(call as u32),
+            value: Some(Arc::new(call as u32)),
             state_delta: EmptyStateDelta::default(),
             directive: (call == 1).then(|| Directive::Transition {
                 target: NodeId::new("rearm"),
@@ -362,29 +422,38 @@ impl NodeInstance<EmptyState> for RearmNode {
 async fn rearm_preserves_attempts_and_entry_input_but_replaces_output() {
     let calls = Arc::new(AtomicUsize::new(0));
     let inputs = Arc::new(Mutex::new(Vec::new()));
-    let graph = Graph::build(
-        vec![
-            Node::new(
-                NodeId::new("rearm"),
-                RearmNode {
-                    calls: calls.clone(),
-                    inputs: inputs.clone(),
-                },
-            )
-            .terminal(true),
-        ],
+    let graph = Graph::<_, u32>::build(
+        vec![Node::new(
+            NodeId::new("rearm"),
+            RearmNode {
+                calls: calls.clone(),
+                inputs: inputs.clone(),
+            },
+        )],
         vec![],
         vec![],
+        NodeId::new("rearm"),
     )
     .unwrap();
-    let run = Scheduler::new(SchedulerConfig::new(1, 2).unwrap())
+    let run = LocalScheduler::new(SchedulerConfig::new(1, 2).unwrap())
         .run(
             &graph,
-            "rearm".into(),
-            EmptyState {},
-            vec![Arc::new(String::from("run")) as SharedValue],
+            GraphInput::new(
+                graph
+                    .entries
+                    .iter()
+                    .map(|id| {
+                        (
+                            id.clone(),
+                            Input::new(vec![Arc::new(String::from("run")) as SharedValue]),
+                        )
+                    })
+                    .collect(),
+            ),
+            RunContext::root("rearm".into(), 4, Arc::new(())),
         )
-        .await;
+        .await
+        .unwrap();
     assert_eq!(run.status(), RunStatus::Completed, "{:?}", run.errors());
     assert_eq!(run.waves(), 2);
     assert_eq!(*inputs.lock().unwrap(), [3, 3]);
@@ -402,7 +471,7 @@ impl NodeInstance<EmptyState> for JoinTarget {
         _ctx: NodeContext<EmptyState>,
     ) -> Result<Outcome<EmptyState, String>, Error> {
         Ok(Outcome {
-            value: Some("joined".into()),
+            value: Some(Arc::new("joined".into())),
             state_delta: EmptyStateDelta::default(),
             directive: None,
         })
@@ -413,16 +482,16 @@ impl NodeInstance<EmptyState> for JoinTarget {
 async fn custom_join_receives_done_and_live_edge_counts() {
     let votes = Arc::new(Mutex::new(Vec::new()));
     let observed = votes.clone();
-    let graph = Graph::build(
+    let graph = Graph::<_, String>::build(
         vec![
             Node::new(NodeId::new("a"), Worker),
             Node::new(NodeId::new("b"), Worker),
-            Node::new(NodeId::new("joined"), JoinTarget)
-                .join(Join::Custom(Arc::new(move |done, total| {
+            Node::new(NodeId::new("joined"), JoinTarget).join(Join::Custom(Arc::new(
+                move |done, total| {
                     observed.lock().unwrap().push((done, total));
                     done == total
-                })))
-                .terminal(true),
+                },
+            ))),
         ],
         vec![
             Edge {
@@ -437,11 +506,23 @@ async fn custom_join_receives_done_and_live_edge_counts() {
             },
         ],
         vec![],
+        NodeId::new("joined"),
     )
     .unwrap();
-    let run = Scheduler::new(SchedulerConfig::new(1, 2).unwrap())
-        .run(&graph, "join".into(), EmptyState {}, vec![])
-        .await;
+    let run = LocalScheduler::new(SchedulerConfig::new(1, 2).unwrap())
+        .run(
+            &graph,
+            GraphInput::new(
+                graph
+                    .entries
+                    .iter()
+                    .map(|id| (id.clone(), Input::new(vec![])))
+                    .collect(),
+            ),
+            RunContext::root("join".into(), 4, Arc::new(())),
+        )
+        .await
+        .unwrap();
     assert_eq!(run.status(), RunStatus::Completed, "{:?}", run.errors());
     assert_eq!(*votes.lock().unwrap(), [(2, 2)]);
 }

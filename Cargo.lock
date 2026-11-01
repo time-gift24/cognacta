@@ -307,7 +307,10 @@ dependencies = [
  "cognacta-derive",
  "thiserror",
  "tokio",
+ "tracing",
+ "tracing-subscriber",
  "trybuild",
+ "uuid",
 ]
 
 [[package]]

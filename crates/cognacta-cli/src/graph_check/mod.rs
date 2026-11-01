@@ -101,3 +101,49 @@ pub(crate) async fn run(scenario: Scenario, writer: &mut impl Write) -> Result<(
         Err(Error::CheckFailed)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn wrong_worker_output_type_fails_real_cases_and_exit_code() {
+        fixtures::tests::WRONG_OUTPUT.set(true);
+        let mut report = Vec::new();
+        let result = run(Scenario::All, &mut report).await;
+        fixtures::tests::WRONG_OUTPUT.set(false);
+        assert!(matches!(&result, Err(Error::CheckFailed)));
+        let report = String::from_utf8(report).unwrap();
+        assert!(report.contains("summary cases=16 passed=11 failed=5"));
+        assert!(
+            report.contains("node=worker[w2] status=completed attempts=1 output=type-mismatch")
+        );
+        assert!(report.contains("assert=worker[w2]-output-type"));
+        assert_eq!(
+            crate::exit_code(
+                result,
+                std::time::Instant::now() + std::time::Duration::from_secs(3)
+            ),
+            std::process::ExitCode::FAILURE,
+        );
+    }
+
+    #[tokio::test]
+    async fn startup_failure_reports_no_run_and_continues_other_cases() {
+        for (initialization, class) in [(false, "Input"), (true, "Initialization")] {
+            fixtures::tests::STARTUP.set(Some(initialization));
+            let mut report = Vec::new();
+            assert!(matches!(
+                run(Scenario::All, &mut report).await,
+                Err(Error::CheckFailed)
+            ));
+            let report = String::from_utf8(report).unwrap();
+            assert!(report.contains("case=chain/complete run=not-started check=FAIL waves=none"));
+            assert!(report.contains(&format!("errors=[Call({class})]")));
+            assert!(report.contains("summary cases=16 passed=15 failed=1"));
+            assert!(!report.contains("private initialization detail"));
+            let first = report.split("case=chain/limit").next().unwrap();
+            assert!(!first.contains("node="));
+        }
+    }
+}

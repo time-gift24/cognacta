@@ -1,18 +1,26 @@
 use std::sync::{Arc, Mutex};
 
 use cognacta_core::{
-    Add, Append, Directive, Edge, Error, Graph, Input, Join, Node, NodeContext, NodeId,
-    NodeInstance, NodeKey, Outcome, Override, Run, Scheduler, SchedulerConfig, SharedValue, State,
+    Add, Append, Directive, Edge, Error, Graph, GraphInput, Input, Join, LocalScheduler, Node,
+    NodeContext, NodeId, NodeInstance, NodeKey, Outcome, Override, Run, RunContext,
+    SchedulerConfig, SharedValue, State,
 };
 use tokio::sync::Notify;
 
-use super::{Job, report::CaseReport};
+use super::{
+    Job,
+    report::{CaseReport, format_value},
+};
 
 fn key(name: &str) -> NodeKey {
     NodeKey::Static(NodeId::new(name))
 }
 
-fn keys<S: State>(run: &Run<S>, static_names: &[&str], templates: &[&str]) -> Vec<NodeKey> {
+fn keys<S: State, O: Send + Sync + 'static>(
+    run: &Run<S, O>,
+    static_names: &[&str],
+    templates: &[&str],
+) -> Vec<NodeKey> {
     static_names
         .iter()
         .map(|name| key(name))
@@ -27,17 +35,30 @@ fn keys<S: State>(run: &Run<S>, static_names: &[&str], templates: &[&str]) -> Ve
 #[bon::builder]
 async fn execute<S: State>(
     case: &str,
-    graph: &Graph<S>,
+    graph: &Graph<S, String>,
     concurrency: usize,
     waves: usize,
-    state: S,
+    entry: NodeId,
     entries: Vec<SharedValue>,
-) -> Result<Run<S>, Error> {
-    let scheduler = Scheduler::new(SchedulerConfig::new(concurrency, waves)?);
-    Ok(scheduler.run(graph, case.into(), state, entries).await)
+) -> Result<Run<S, String>, Error> {
+    #[cfg(test)]
+    if let Some(error) = tests::startup_failure(case).await {
+        return Err(error);
+    }
+    let scheduler = LocalScheduler::new(SchedulerConfig::new(concurrency, waves)?);
+    scheduler
+        .run(
+            graph,
+            GraphInput::new(std::collections::HashMap::from([(
+                entry,
+                Input::new(entries),
+            )])),
+            RunContext::root(case.into(), 4, Arc::new(())),
+        )
+        .await
 }
 
-#[derive(State)]
+#[derive(Default, State)]
 struct ChainState {
     #[reducer(Override)]
     length: u32,
@@ -52,7 +73,7 @@ impl NodeInstance<ChainState> for ChainA {
         _ctx: NodeContext<ChainState>,
     ) -> Result<Outcome<ChainState, String>, Error> {
         Ok(Outcome {
-            value: Some(input.entry::<String>()?.clone()),
+            value: Some(Arc::new(input.entry::<String>()?.clone())),
             state_delta: ChainStateDelta::default(),
             directive: None,
         })
@@ -69,7 +90,7 @@ impl NodeInstance<ChainState> for ChainB {
     ) -> Result<Outcome<ChainState, u32>, Error> {
         let length = input.one::<String>(&NodeId::new("A"))?.len() as u32;
         Ok(Outcome {
-            value: Some(length),
+            value: Some(Arc::new(length)),
             state_delta: ChainStateDelta {
                 length: Some(length),
             },
@@ -93,7 +114,7 @@ impl NodeInstance<ChainState> for ChainC {
             )));
         }
         Ok(Outcome {
-            value: Some(format!("len={length}")),
+            value: Some(Arc::new(format!("len={length}"))),
             state_delta: ChainStateDelta::default(),
             directive: None,
         })
@@ -106,11 +127,11 @@ pub(super) async fn chain(limited: bool) -> Result<CaseReport, Error> {
     } else {
         "chain/complete"
     };
-    let graph = Graph::build(
+    let graph = Graph::<_, String>::build(
         vec![
             Node::new(NodeId::new("A"), ChainA),
             Node::new(NodeId::new("B"), ChainB).writes(vec![ChainStateField::Length]),
-            Node::new(NodeId::new("C"), ChainC).terminal(true),
+            Node::new(NodeId::new("C"), ChainC),
         ],
         vec![
             Edge {
@@ -125,13 +146,14 @@ pub(super) async fn chain(limited: bool) -> Result<CaseReport, Error> {
             },
         ],
         vec![NodeId::new("A")],
+        NodeId::new("C"),
     )?;
     let run = execute()
         .case(case)
         .graph(&graph)
         .concurrency(1)
         .waves(if limited { 2 } else { 3 })
-        .state(ChainState { length: 0 })
+        .entry(NodeId::new("A"))
         .entries(vec![Arc::new(String::from("hello")) as SharedValue])
         .call()
         .await?;
@@ -140,6 +162,14 @@ pub(super) async fn chain(limited: bool) -> Result<CaseReport, Error> {
         &run,
         keys(&run, &["A", "B", "C"], &[]),
         vec![("length".into(), run.state().length.to_string())],
+        |node, value| {
+            if node == &key("B") {
+                format_value::<u32>(value)
+            } else {
+                format_value::<String>(value)
+            }
+        },
+        |value| format!("{value:?}"),
     );
     report.check(
         "run-status",
@@ -191,7 +221,7 @@ pub(super) async fn chain(limited: bool) -> Result<CaseReport, Error> {
         if run.final_output().is_none() {
             "none".into()
         } else {
-            report.final_value(&NodeId::new("C"))
+            report.final_value()
         },
     );
     report.check(
@@ -202,7 +232,7 @@ pub(super) async fn chain(limited: bool) -> Result<CaseReport, Error> {
     Ok(report)
 }
 
-#[derive(State)]
+#[derive(Default, State)]
 struct DiamondState {
     #[reducer(Add)]
     count: u32,
@@ -219,7 +249,7 @@ impl NodeInstance<DiamondState> for DiamondA {
         _ctx: NodeContext<DiamondState>,
     ) -> Result<Outcome<DiamondState, String>, Error> {
         Ok(Outcome {
-            value: Some("A".into()),
+            value: Some(Arc::new("A".into())),
             state_delta: DiamondStateDelta {
                 count: Some(10),
                 labels: Some(vec!["A".into()]),
@@ -254,7 +284,7 @@ impl NodeInstance<DiamondState> for DiamondBranch {
         }
         self.completed.lock().unwrap().push(self.name);
         Ok(Outcome {
-            value: Some(seen),
+            value: Some(Arc::new(seen)),
             state_delta: DiamondStateDelta {
                 count: Some(1),
                 labels: Some(vec![self.name.into()]),
@@ -275,7 +305,7 @@ impl NodeInstance<DiamondState> for DiamondD {
         let b = input.one::<u32>(&NodeId::new("B"))?;
         let c = input.one::<u32>(&NodeId::new("C"))?;
         Ok(Outcome {
-            value: Some(format!("B={b},C={c},count={}", ctx.state.count)),
+            value: Some(Arc::new(format!("B={b},C={c},count={}", ctx.state.count))),
             state_delta: DiamondStateDelta::default(),
             directive: None,
         })
@@ -290,7 +320,7 @@ pub(super) async fn diamond(parallel: bool) -> Result<CaseReport, Error> {
     };
     let release = Arc::new(Notify::new());
     let completed = Arc::new(Mutex::new(Vec::new()));
-    let graph = Graph::build(
+    let graph = Graph::<_, String>::build(
         vec![
             Node::new(NodeId::new("A"), DiamondA)
                 .writes(vec![DiamondStateField::Count, DiamondStateField::Labels]),
@@ -312,9 +342,7 @@ pub(super) async fn diamond(parallel: bool) -> Result<CaseReport, Error> {
                 },
             )
             .writes(vec![DiamondStateField::Count, DiamondStateField::Labels]),
-            Node::new(NodeId::new("D"), DiamondD)
-                .join(Join::All)
-                .terminal(true),
+            Node::new(NodeId::new("D"), DiamondD).join(Join::All),
         ],
         vec![
             Edge {
@@ -339,16 +367,14 @@ pub(super) async fn diamond(parallel: bool) -> Result<CaseReport, Error> {
             },
         ],
         vec![NodeId::new("A")],
+        NodeId::new("D"),
     )?;
     let run = execute()
         .case(case)
         .graph(&graph)
         .concurrency(if parallel { 2 } else { 1 })
         .waves(3)
-        .state(DiamondState {
-            count: 0,
-            labels: vec![],
-        })
+        .entry(NodeId::new("A"))
         .entries(vec![])
         .call()
         .await?;
@@ -360,6 +386,14 @@ pub(super) async fn diamond(parallel: bool) -> Result<CaseReport, Error> {
             ("count".into(), run.state().count.to_string()),
             ("labels".into(), format!("{:?}", run.state().labels)),
         ],
+        |node, value| {
+            if node == &key("B") || node == &key("C") {
+                format_value::<u32>(value)
+            } else {
+                format_value::<String>(value)
+            }
+        },
+        |value| format!("{value:?}"),
     );
     report.check(
         "run-status",
@@ -410,7 +444,7 @@ pub(super) async fn diamond(parallel: bool) -> Result<CaseReport, Error> {
     Ok(report)
 }
 
-#[derive(State)]
+#[derive(Default, State)]
 struct EmptyState {}
 
 struct Text(&'static str);
@@ -422,7 +456,7 @@ impl NodeInstance<EmptyState> for Text {
         _ctx: NodeContext<EmptyState>,
     ) -> Result<Outcome<EmptyState, String>, Error> {
         Ok(Outcome {
-            value: Some(self.0.into()),
+            value: Some(Arc::new(self.0.into())),
             state_delta: EmptyStateDelta::default(),
             directive: None,
         })
@@ -431,13 +465,11 @@ impl NodeInstance<EmptyState> for Text {
 
 pub(super) async fn branch(any: bool) -> Result<CaseReport, Error> {
     let case = if any { "branch/any" } else { "branch/all" };
-    let graph = Graph::build(
+    let graph = Graph::<_, String>::build(
         vec![
             Node::new(NodeId::new("A"), Text("A")),
             Node::new(NodeId::new("B"), Text("B")),
-            Node::new(NodeId::new("C"), Text("C"))
-                .join(if any { Join::Any } else { Join::All })
-                .terminal(true),
+            Node::new(NodeId::new("C"), Text("C")).join(if any { Join::Any } else { Join::All }),
             Node::new(NodeId::new("D"), Text("D")),
             Node::new(NodeId::new("E"), Text("E")),
         ],
@@ -469,13 +501,14 @@ pub(super) async fn branch(any: bool) -> Result<CaseReport, Error> {
             },
         ],
         vec![NodeId::new("A")],
+        NodeId::new("C"),
     )?;
     let run = execute()
         .case(case)
         .graph(&graph)
         .concurrency(1)
         .waves(3)
-        .state(EmptyState {})
+        .entry(NodeId::new("A"))
         .entries(vec![])
         .call()
         .await?;
@@ -484,6 +517,8 @@ pub(super) async fn branch(any: bool) -> Result<CaseReport, Error> {
         &run,
         keys(&run, &["A", "B", "C", "D", "E"], &[]),
         vec![],
+        |_, value| format_value::<String>(value),
+        |value| format!("{value:?}"),
     );
     report.check(
         "run-status",
@@ -537,7 +572,7 @@ pub(super) async fn branch(any: bool) -> Result<CaseReport, Error> {
     Ok(report)
 }
 
-#[derive(State)]
+#[derive(Default, State)]
 struct FanoutState {
     #[reducer(Add)]
     total: u32,
@@ -561,7 +596,7 @@ impl NodeInstance<FanoutState> for Planner {
             })
             .collect();
         Ok(Outcome {
-            value: Some("plan".into()),
+            value: Some(Arc::new("plan".into())),
             state_delta: FanoutStateDelta::default(),
             directive: Some(Directive::Deliver(targets)),
         })
@@ -578,7 +613,7 @@ impl NodeInstance<FanoutState> for FanoutWorker {
     ) -> Result<Outcome<FanoutState, Job>, Error> {
         let job = *input.one::<Job>(&NodeId::new("planner"))?;
         Ok(Outcome {
-            value: Some(job),
+            value: Some(Arc::new(job)),
             state_delta: FanoutStateDelta {
                 total: Some(job.0),
                 items: Some(vec![job]),
@@ -598,7 +633,7 @@ impl NodeInstance<FanoutState> for Aggregate {
     ) -> Result<Outcome<FanoutState, String>, Error> {
         let jobs = input.many::<Job>(&NodeId::new("worker"))?;
         Ok(Outcome {
-            value: Some(format!("jobs={jobs:?}")),
+            value: Some(Arc::new(format!("jobs={jobs:?}"))),
             state_delta: FanoutStateDelta::default(),
             directive: None,
         })
@@ -612,7 +647,7 @@ pub(super) async fn fanout(count: usize) -> Result<CaseReport, Error> {
         _ => "many",
     };
     let case = format!("fanout/{variant}");
-    let graph = Graph::build(
+    let graph = Graph::<_, String>::build(
         vec![
             Node::new(NodeId::new("planner"), Planner(count)).declared_targets(vec![
                 cognacta_core::DirectiveTarget::Deliver(NodeId::new("worker")),
@@ -620,9 +655,7 @@ pub(super) async fn fanout(count: usize) -> Result<CaseReport, Error> {
             Node::new(NodeId::new("worker"), FanoutWorker)
                 .template(true)
                 .writes(vec![FanoutStateField::Total, FanoutStateField::Items]),
-            Node::new(NodeId::new("aggregate"), Aggregate)
-                .join(Join::All)
-                .terminal(true),
+            Node::new(NodeId::new("aggregate"), Aggregate).join(Join::All),
         ],
         vec![Edge {
             source: NodeId::new("worker"),
@@ -630,16 +663,14 @@ pub(super) async fn fanout(count: usize) -> Result<CaseReport, Error> {
             when: None,
         }],
         vec![NodeId::new("planner")],
+        NodeId::new("aggregate"),
     )?;
     let run = execute()
         .case(&case)
         .graph(&graph)
         .concurrency(2)
         .waves(3)
-        .state(FanoutState {
-            total: 0,
-            items: vec![],
-        })
+        .entry(NodeId::new("planner"))
         .entries(vec![])
         .call()
         .await?;
@@ -655,6 +686,14 @@ pub(super) async fn fanout(count: usize) -> Result<CaseReport, Error> {
             ("total".into(), run.state().total.to_string()),
             ("items".into(), format!("{:?}", run.state().items)),
         ],
+        |node, value| {
+            if matches!(node, NodeKey::Instance { .. }) {
+                value.downcast_ref::<Job>().map(|job| job.0.to_string())
+            } else {
+                format_value::<String>(value)
+            }
+        },
+        |value| format!("{value:?}"),
     );
     report.check(
         "run-status",
@@ -719,9 +758,7 @@ pub(super) async fn fanout(count: usize) -> Result<CaseReport, Error> {
     report.check(
         "final-nodes",
         "1",
-        run.final_output()
-            .map_or(0, |output| output.values.len())
-            .to_string(),
+        run.final_output().map_or(0, |_| 1).to_string(),
     );
     report.check(
         "final-aggregate",
@@ -732,12 +769,12 @@ pub(super) async fn fanout(count: usize) -> Result<CaseReport, Error> {
                 .map(|job| Job(*job))
                 .collect::<Vec<_>>()
         ),
-        report.final_value(&NodeId::new("aggregate")),
+        report.final_value(),
     );
     Ok(report)
 }
 
-#[derive(State)]
+#[derive(Default, State)]
 struct TransitionState {
     #[reducer(Add)]
     count: u32,
@@ -752,7 +789,7 @@ impl NodeInstance<TransitionState> for TransitionA {
         _ctx: NodeContext<TransitionState>,
     ) -> Result<Outcome<TransitionState, String>, Error> {
         Ok(Outcome {
-            value: Some("A".into()),
+            value: Some(Arc::new("A".into())),
             state_delta: TransitionStateDelta::default(),
             directive: Some(Directive::Transition {
                 target: NodeId::new("T"),
@@ -773,7 +810,7 @@ impl NodeInstance<TransitionState> for CountNode {
     ) -> Result<Outcome<TransitionState, u32>, Error> {
         let next = ctx.state.count + 1;
         Ok(Outcome {
-            value: Some(next),
+            value: Some(Arc::new(next)),
             state_delta: TransitionStateDelta { count: Some(1) },
             directive: None,
         })
@@ -790,7 +827,7 @@ impl NodeInstance<TransitionState> for TransitionT {
     ) -> Result<Outcome<TransitionState, String>, Error> {
         let payload = input.one::<u32>(&NodeId::new("A"))?;
         Ok(Outcome {
-            value: Some(format!("{payload}@{}", ctx.state.count)),
+            value: Some(Arc::new(format!("{payload}@{}", ctx.state.count))),
             state_delta: TransitionStateDelta::default(),
             directive: None,
         })
@@ -803,14 +840,14 @@ pub(super) async fn transition(immediate: bool) -> Result<CaseReport, Error> {
     } else {
         "transition/wait"
     };
-    let graph = Graph::build(
+    let graph = Graph::<_, String>::build(
         vec![
             Node::new(NodeId::new("A"), TransitionA(immediate)).declared_targets(vec![
                 cognacta_core::DirectiveTarget::Transition(NodeId::new("T")),
             ]),
             Node::new(NodeId::new("P"), CountNode).writes(vec![TransitionStateField::Count]),
             Node::new(NodeId::new("Q"), CountNode).writes(vec![TransitionStateField::Count]),
-            Node::new(NodeId::new("T"), TransitionT).terminal(true),
+            Node::new(NodeId::new("T"), TransitionT),
         ],
         vec![
             Edge {
@@ -830,13 +867,14 @@ pub(super) async fn transition(immediate: bool) -> Result<CaseReport, Error> {
             },
         ],
         vec![NodeId::new("A")],
+        NodeId::new("T"),
     )?;
     let run = execute()
         .case(case)
         .graph(&graph)
         .concurrency(2)
         .waves(4)
-        .state(TransitionState { count: 0 })
+        .entry(NodeId::new("A"))
         .entries(vec![])
         .call()
         .await?;
@@ -845,6 +883,14 @@ pub(super) async fn transition(immediate: bool) -> Result<CaseReport, Error> {
         &run,
         keys(&run, &["A", "P", "Q", "T"], &[]),
         vec![("count".into(), run.state().count.to_string())],
+        |node, value| {
+            if node == &key("P") || node == &key("Q") {
+                format_value::<u32>(value)
+            } else {
+                format_value::<String>(value)
+            }
+        },
+        |value| format!("{value:?}"),
     );
     report.check(
         "run-status",
@@ -893,7 +939,7 @@ pub(super) async fn transition(immediate: bool) -> Result<CaseReport, Error> {
     Ok(report)
 }
 
-#[derive(State)]
+#[derive(Default, State)]
 struct SettlementState {
     #[reducer(Override)]
     title: Option<String>,
@@ -931,7 +977,7 @@ impl NodeInstance<SettlementState> for Seed {
             })
             .collect();
         Ok(Outcome {
-            value: Some("seed".into()),
+            value: Some(Arc::new("seed".into())),
             state_delta: SettlementStateDelta {
                 title: Some(Some("seed".into())),
                 items: Some(vec!["seed".into()]),
@@ -984,7 +1030,7 @@ impl NodeInstance<SettlementState> for SettlementWorker {
             _ => None,
         };
         Ok(Outcome {
-            value: Some(name.clone()),
+            value: Some(Arc::new(name.clone())),
             state_delta: SettlementStateDelta {
                 title,
                 items: Some(vec![name]),
@@ -1005,7 +1051,7 @@ impl NodeInstance<SettlementState> for SettlementAggregate {
     ) -> Result<Outcome<SettlementState, String>, Error> {
         let values = input.many::<String>(&NodeId::new("worker"))?;
         Ok(Outcome {
-            value: Some(format!("{values:?}")),
+            value: Some(Arc::new(format!("{values:?}"))),
             state_delta: SettlementStateDelta::default(),
             directive: None,
         })
@@ -1021,6 +1067,16 @@ pub(super) async fn settlement(kind: SettlementKind) -> Result<CaseReport, Error
         SettlementKind::MultiError => ("multi-error", 4, 2),
     };
     let case = format!("settlement/{variant}");
+    let worker = Node::new(NodeId::new("worker"), SettlementWorker { kind });
+    #[cfg(test)]
+    let worker = if tests::WRONG_OUTPUT.get() {
+        Node::new(
+            NodeId::new("worker"),
+            tests::WrongOutput(SettlementWorker { kind }),
+        )
+    } else {
+        worker
+    };
     let nodes = vec![
         Node::new(
             NodeId::new("seed"),
@@ -1041,7 +1097,7 @@ pub(super) async fn settlement(kind: SettlementKind) -> Result<CaseReport, Error
         .declared_targets(vec![cognacta_core::DirectiveTarget::Deliver(NodeId::new(
             "worker",
         ))]),
-        Node::new(NodeId::new("worker"), SettlementWorker { kind })
+        worker
             .template(true)
             .writes(vec![
                 SettlementStateField::Title,
@@ -1058,9 +1114,9 @@ pub(super) async fn settlement(kind: SettlementKind) -> Result<CaseReport, Error
             },
         )
         .template(true),
-        Node::new(NodeId::new("aggregate"), SettlementAggregate).terminal(true),
+        Node::new(NodeId::new("aggregate"), SettlementAggregate),
     ];
-    let graph = Graph::build(
+    let graph = Graph::<_, String>::build(
         nodes,
         vec![Edge {
             source: NodeId::new("worker"),
@@ -1068,17 +1124,14 @@ pub(super) async fn settlement(kind: SettlementKind) -> Result<CaseReport, Error
             when: None,
         }],
         vec![NodeId::new("seed")],
+        NodeId::new("aggregate"),
     )?;
     let run = execute()
         .case(&case)
         .graph(&graph)
         .concurrency(concurrency)
         .waves(3)
-        .state(SettlementState {
-            title: None,
-            items: vec![],
-            count: 0,
-        })
+        .entry(NodeId::new("seed"))
         .entries(vec![])
         .call()
         .await?;
@@ -1092,6 +1145,8 @@ pub(super) async fn settlement(kind: SettlementKind) -> Result<CaseReport, Error
             ("items".into(), format!("{:?}", run.state().items)),
             ("count".into(), run.state().count.to_string()),
         ],
+        |_, value| format_value::<String>(value),
+        |value| format!("{value:?}"),
     );
     let errors = report.errors().join(";");
     let (expected_errors, expected_items, expected_count): (String, String, &str) = match kind {
@@ -1176,4 +1231,64 @@ pub(super) async fn settlement(kind: SettlementKind) -> Result<CaseReport, Error
         );
     }
     Ok(report)
+}
+
+#[cfg(test)]
+pub(super) mod tests {
+    use super::*;
+    thread_local! { pub(in crate::graph_check) static STARTUP: std::cell::Cell<Option<bool>> = const { std::cell::Cell::new(None) }; }
+    thread_local! { pub(in crate::graph_check) static WRONG_OUTPUT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) }; }
+
+    pub(super) struct WrongOutput(pub(super) SettlementWorker);
+    impl NodeInstance<SettlementState> for WrongOutput {
+        type Output = u32;
+        async fn run(
+            &self,
+            input: &Input,
+            ctx: NodeContext<SettlementState>,
+        ) -> Result<Outcome<SettlementState, u32>, Error> {
+            let outcome = self.0.run(input, ctx).await?;
+            Ok(Outcome {
+                value: Some(Arc::new(123)),
+                state_delta: outcome.state_delta,
+                directive: outcome.directive,
+            })
+        }
+    }
+
+    pub(super) async fn startup_failure(case: &str) -> Option<Error> {
+        if case != "chain/complete" {
+            return None;
+        }
+        let initialization = STARTUP.take()?;
+        let graph = Graph::<EmptyState, String>::build_with_initializer(
+            vec![Node::new(NodeId::new("A"), Text("A"))],
+            vec![],
+            vec![],
+            NodeId::new("A"),
+            move |_, _| async move {
+                if initialization {
+                    Err(Error::execution(std::io::Error::other(
+                        "private initialization detail",
+                    )))
+                } else {
+                    Ok(EmptyState {})
+                }
+            },
+        )
+        .unwrap();
+        let input = GraphInput::new(if initialization {
+            std::collections::HashMap::from([(NodeId::new("A"), Input::new(vec![]))])
+        } else {
+            std::collections::HashMap::new()
+        });
+        LocalScheduler::new(SchedulerConfig::new(1, 1).unwrap())
+            .run(
+                &graph,
+                input,
+                RunContext::root("startup-test".into(), 0, Arc::new(())),
+            )
+            .await
+            .err()
+    }
 }

@@ -1,0 +1,26 @@
+error[E0599]: the associated function or constant `builder` exists for struct `cognacta_core::Graph<Data, ()>`, but its trait bounds were not satisfied
+ --> tests/graph/missing_default.rs:4:40
+  |
+3 | struct Data { #[reducer(Override)] value: usize }
+  | ----------- doesn't satisfy `Data: Default`
+4 | fn main() { let _ = Graph::<Data, ()>::builder(); }
+  |                                        ^^^^^^^ associated function or constant cannot be called on `cognacta_core::Graph<Data, ()>` due to unsatisfied trait bounds
+  |
+note: if you're trying to build a new `cognacta_core::Graph<Data, ()>`, consider using `cognacta_core::Graph::<S, O, R>::build_with_initializer` which returns `Result<cognacta_core::Graph<_, _, _>, cognacta_core::Error>`
+ --> src/graph.rs
+  |
+  | /     pub fn build_with_initializer<F, Fut>(
+  | |         nodes: Vec<Node<S, R>>,
+  | |         edges: Vec<Edge<S>>,
+  | |         entries: Vec<NodeId>,
+... |
+  | |         F: Fn(Arc<GraphInput>, RunContext<R>) -> Fut + Send + Sync + 'static,
+  | |         Fut: Future<Output = Result<S, Error>> + Send + 'static,
+  | |________________________________________________________________^
+  = note: the following trait bounds were not satisfied:
+          `Data: Default`
+help: consider annotating `Data` with `#[derive(Default)]`
+  |
+3 + #[derive(Default)]
+4 | struct Data { #[reducer(Override)] value: usize }
+  |

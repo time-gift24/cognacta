@@ -1,0 +1,29 @@
+error[E0277]: `Cell<usize>` cannot be shared between threads safely
+ --> tests/graph/initializer_not_sync.rs:6:101
+  |
+6 |       let _ = Graph::<Data, ()>::build_with_initializer(vec![], vec![], vec![], NodeId::new("entry"), move |_, _| {
+  |               -----------------------------------------                                               ^----------
+  |               |                                                                                       |
+  |  _____________|_______________________________________________________________________________________within this `{closure@$DIR/tests/graph/initializer_not_sync.rs:6:101: 6:112}`
+  | |             |
+  | |             required by a bound introduced by this call
+7 | |         let value = value.get();
+8 | |         async move { Ok(Data { value }) }
+9 | |     });
+  | |_____^ `Cell<usize>` cannot be shared between threads safely
+  |
+  = help: within `{closure@$DIR/tests/graph/initializer_not_sync.rs:6:101: 6:112}`, the trait `Sync` is not implemented for `Cell<usize>`
+  = note: if you want to do aliasing and mutation between multiple threads, use `std::sync::RwLock` or `std::sync::atomic::AtomicUsize` instead
+note: required because it's used within this closure
+ --> tests/graph/initializer_not_sync.rs:6:101
+  |
+6 |     let _ = Graph::<Data, ()>::build_with_initializer(vec![], vec![], vec![], NodeId::new("entry"), move |_, _| {
+  |                                                                                                     ^^^^^^^^^^^
+note: required by a bound in `cognacta_core::Graph::<S, O, R>::build_with_initializer`
+ --> src/graph.rs
+  |
+  |     pub fn build_with_initializer<F, Fut>(
+  |            ---------------------- required by a bound in this associated function
+...
+  |         F: Fn(Arc<GraphInput>, RunContext<R>) -> Fut + Send + Sync + 'static,
+  |                                                               ^^^^ required by this bound in `Graph::<S, O, R>::build_with_initializer`

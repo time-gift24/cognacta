@@ -11,3 +11,13 @@ fn state_derive_compile_contracts() {
     tests.compile_fail("tests/derive/sort_comparator.rs");
     tests.compile_fail("tests/derive/not_send_sync.rs");
 }
+
+#[test]
+fn graph_compile_contracts() {
+    let tests = trybuild::TestCases::new();
+    tests.pass("tests/graph/pass.rs");
+    tests.compile_fail("tests/graph/missing_default.rs");
+    tests.compile_fail("tests/graph/initializer_not_send.rs");
+    tests.compile_fail("tests/graph/resource_not_sync.rs");
+    tests.compile_fail("tests/graph/initializer_not_sync.rs");
+}

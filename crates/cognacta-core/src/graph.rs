@@ -1,6 +1,8 @@
 use std::{
+    any::{TypeId, type_name},
     collections::{HashMap, HashSet},
     future::Future,
+    marker::PhantomData,
     pin::Pin,
     sync::Arc,
 };
@@ -8,7 +10,8 @@ use std::{
 use bon::bon;
 
 use crate::{
-    Directive, Error, GraphError, Input, NodeId, NodeKey, SharedValue, State, WritePolicy,
+    Directive, Error, GraphError, GraphInput, Input, NodeId, NodeKey, RunContext, SharedValue,
+    State, WritePolicy,
 };
 
 #[derive(Clone)]
@@ -32,37 +35,40 @@ pub enum DirectiveTarget {
     Deliver(NodeId),
 }
 
-pub struct Outcome<S: State, O = SharedValue> {
-    pub value: Option<O>,
+/// Node result; `None` means no value, while `Some(Arc::new(()))` is a unit result.
+pub struct Outcome<S: State, O> {
+    pub value: Option<Arc<O>>,
     pub state_delta: S::Delta,
     pub directive: Option<Directive>,
 }
 
-pub struct NodeContext<S: State> {
+/// The current wave snapshot, node identity and explicit invocation context.
+pub struct NodeContext<S: State, R = ()> {
     pub state: Arc<S>,
-    pub run_id: String,
+    pub run: RunContext<R>,
     pub key: NodeKey,
 }
 
 type ErasedFuture<'a, S> =
-    Pin<Box<dyn Future<Output = Result<Outcome<S, SharedValue>, Error>> + Send + 'a>>;
+    Pin<Box<dyn Future<Output = Result<ErasedOutcome<S>, Error>> + Send + 'a>>;
 
-pub(crate) trait ErasedNode<S: State>: Send + Sync {
-    fn run<'a>(&'a self, input: &'a Input, ctx: NodeContext<S>) -> ErasedFuture<'a, S>;
+pub(crate) trait ErasedNode<S: State, R>: Send + Sync {
+    fn run<'a>(&'a self, input: &'a Input, ctx: NodeContext<S, R>) -> ErasedFuture<'a, S>;
 }
 
 struct Adapter<N>(N);
 
-impl<S, N> ErasedNode<S> for Adapter<N>
+impl<S, N, R> ErasedNode<S, R> for Adapter<N>
 where
     S: State,
-    N: crate::NodeInstance<S>,
+    N: crate::NodeInstance<S, R>,
+    R: Send + Sync + 'static,
 {
-    fn run<'a>(&'a self, input: &'a Input, ctx: NodeContext<S>) -> ErasedFuture<'a, S> {
+    fn run<'a>(&'a self, input: &'a Input, ctx: NodeContext<S, R>) -> ErasedFuture<'a, S> {
         Box::pin(async move {
             let outcome = self.0.run(input, ctx).await?;
-            Ok(Outcome {
-                value: outcome.value.map(|value| Arc::new(value) as SharedValue),
+            Ok(ErasedOutcome {
+                value: outcome.value.map(|value| value as SharedValue),
                 state_delta: outcome.state_delta,
                 directive: outcome.directive,
             })
@@ -70,24 +76,26 @@ where
     }
 }
 
-pub struct Node<S: State> {
+pub struct Node<S: State, R = ()> {
     pub(crate) id: NodeId,
-    pub(crate) instance: Arc<dyn ErasedNode<S>>,
+    pub(crate) instance: Arc<dyn ErasedNode<S, R>>,
     pub(crate) join: Join,
     pub(crate) template: bool,
-    pub(crate) terminal: bool,
+    output_type: TypeId,
+    output_name: &'static str,
     pub(crate) writes: Vec<S::Field>,
     pub(crate) declared_targets: Vec<DirectiveTarget>,
 }
 
-impl<S: State> Node<S> {
-    pub fn new<N: crate::NodeInstance<S>>(id: NodeId, instance: N) -> Self {
+impl<S: State, R: Send + Sync + 'static> Node<S, R> {
+    pub fn new<N: crate::NodeInstance<S, R>>(id: NodeId, instance: N) -> Self {
         Self {
             id,
             instance: Arc::new(Adapter(instance)),
             join: Join::All,
             template: false,
-            terminal: false,
+            output_type: TypeId::of::<N::Output>(),
+            output_name: type_name::<N::Output>(),
             writes: Vec::new(),
             declared_targets: Vec::new(),
         }
@@ -103,11 +111,6 @@ impl<S: State> Node<S> {
         self
     }
 
-    pub fn terminal(mut self, enabled: bool) -> Self {
-        self.terminal = enabled;
-        self
-    }
-
     pub fn writes(mut self, fields: Vec<S::Field>) -> Self {
         self.writes = fields;
         self
@@ -119,26 +122,53 @@ impl<S: State> Node<S> {
     }
 }
 
-pub struct Graph<S: State> {
-    pub(crate) nodes: Vec<Node<S>>,
+/// Reusable graph definition with a single typed return and per-invocation initializer.
+pub struct Graph<S: State, O, R = ()> {
+    pub(crate) nodes: Vec<Node<S, R>>,
     pub(crate) edges: Vec<Edge<S>>,
     pub(crate) entries: HashSet<NodeId>,
     indices: HashMap<NodeId, usize>,
+    pub(crate) return_node: NodeId,
+    pub(crate) initializer: Box<Initializer<S, R>>,
+    output: PhantomData<O>,
+}
+
+type Initializer<S, R> = dyn Fn(Arc<GraphInput>, RunContext<R>) -> Pin<Box<dyn Future<Output = Result<S, Error>> + Send>>
+    + Send
+    + Sync;
+
+#[bon]
+impl<S: State + Default, O: Send + Sync + 'static, R: Send + Sync + 'static> Graph<S, O, R> {
+    /// Builds a static graph using a fresh `S::default()` for each invocation.
+    #[builder(start_fn = builder, finish_fn = build, builder_type = GraphBuilder, state_mod(vis = "pub"))]
+    pub fn build(
+        nodes: Vec<Node<S, R>>,
+        edges: Vec<Edge<S>>,
+        entries: Vec<NodeId>,
+        return_node: NodeId,
+    ) -> Result<Self, Error> {
+        Self::build_with_initializer(nodes, edges, entries, return_node, |_, _| async {
+            Ok(S::default())
+        })
+    }
 }
 
 #[bon]
-impl<S: State> Graph<S> {
-    #[builder(
-        start_fn = builder,
-        finish_fn = build,
-        builder_type = GraphBuilder,
-        state_mod(vis = "pub")
-    )]
-    pub fn build(
-        nodes: Vec<Node<S>>,
+impl<S: State, O: Send + Sync + 'static, R: Send + Sync + 'static> Graph<S, O, R> {
+    /// Validates the graph without invoking its asynchronous State initializer.
+    /// Returns `Error::Graph` for invalid topology, writes, or return declarations.
+    #[builder(start_fn = builder_with_initializer, finish_fn = build, builder_type = GraphWithInitializerBuilder, state_mod(vis = "pub"))]
+    pub fn build_with_initializer<F, Fut>(
+        nodes: Vec<Node<S, R>>,
         edges: Vec<Edge<S>>,
         entries: Vec<NodeId>,
-    ) -> Result<Self, Error> {
+        return_node: NodeId,
+        state_initializer: F,
+    ) -> Result<Self, Error>
+    where
+        F: Fn(Arc<GraphInput>, RunContext<R>) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<S, Error>> + Send + 'static,
+    {
         let mut indices = HashMap::new();
         for (index, node) in nodes.iter().enumerate() {
             if indices.insert(node.id.clone(), index).is_some() {
@@ -147,12 +177,23 @@ impl<S: State> Graph<S> {
                 }
                 .into());
             }
-            if node.template && node.terminal {
-                return Err(GraphError::InvalidTemplateRole {
-                    node: node.id.clone(),
-                }
-                .into());
+        }
+        let index = *indices
+            .get(&return_node)
+            .ok_or_else(|| GraphError::UnknownReturnNode {
+                node: return_node.clone(),
+            })?;
+        let node = &nodes[index];
+        if node.template {
+            return Err(GraphError::InvalidReturnNode { node: return_node }.into());
+        }
+        if node.output_type != TypeId::of::<O>() {
+            return Err(GraphError::ReturnTypeMismatch {
+                node: return_node,
+                expected_type: type_name::<O>(),
+                actual_type: node.output_name,
             }
+            .into());
         }
         for edge in &edges {
             for endpoint in [&edge.source, &edge.target] {
@@ -219,18 +260,23 @@ impl<S: State> Graph<S> {
             edges,
             entries,
             indices,
+            return_node,
+            initializer: Box::new(move |input, context| {
+                Box::pin(state_initializer(input, context))
+            }),
+            output: PhantomData,
         };
         graph.check_static_writers()?;
         Ok(graph)
     }
 }
 
-impl<S: State> Graph<S> {
-    pub(crate) fn node(&self, id: &NodeId) -> &Node<S> {
+impl<S: State, O, R> Graph<S, O, R> {
+    pub(crate) fn node(&self, id: &NodeId) -> &Node<S, R> {
         &self.nodes[self.indices[id]]
     }
 
-    pub(crate) fn key_node(&self, key: &NodeKey) -> &Node<S> {
+    pub(crate) fn key_node(&self, key: &NodeKey) -> &Node<S, R> {
         match key {
             NodeKey::Static(id) => self.node(id),
             NodeKey::Instance { template, .. } => self.node(template),
@@ -309,4 +355,10 @@ impl<S: State> Graph<S> {
         }
         Ok(())
     }
+}
+
+pub(crate) struct ErasedOutcome<S: State> {
+    pub(crate) value: Option<SharedValue>,
+    pub(crate) state_delta: S::Delta,
+    pub(crate) directive: Option<Directive>,
 }

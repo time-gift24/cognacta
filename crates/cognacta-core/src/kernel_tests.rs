@@ -1,15 +1,16 @@
+use crate::{GraphInput, RunContext};
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicUsize, Ordering},
 };
 
 use crate::{
-    Add, Append, Directive, Edge, Error, Graph, GraphError, Input, MergeError, Node, NodeContext,
-    NodeError, NodeId, NodeInstance, NodeKey, NodeStatus, Outcome, Override, RunError, RunStatus,
-    Scheduler, SchedulerConfig, State,
+    Add, Append, Directive, Edge, Error, Graph, GraphError, Input, LocalScheduler, MergeError,
+    Node, NodeContext, NodeError, NodeId, NodeInstance, NodeKey, NodeStatus, Outcome, Override,
+    RunError, RunStatus, SchedulerConfig, State,
 };
 
-#[derive(State)]
+#[derive(Default, State)]
 struct TestState {
     #[reducer(Override)]
     title: Option<String>,
@@ -62,7 +63,7 @@ impl NodeInstance<TestState> for Worker {
             Behavior::Fail => Err(Error::execution(std::io::Error::other("controlled"))),
             Behavior::Panic => panic!("controlled panic"),
             Behavior::Ok => Ok(Outcome {
-                value: Some(self.name.into()),
+                value: Some(Arc::new(self.name.into())),
                 state_delta: TestStateDelta {
                     title: None,
                     items: Some(vec![self.name.into()]),
@@ -74,21 +75,13 @@ impl NodeInstance<TestState> for Worker {
     }
 }
 
-fn initial_state() -> TestState {
-    TestState {
-        title: None,
-        items: vec![],
-        count: 0,
-    }
-}
-
-fn scheduler(max_concurrency: usize, max_waves: usize) -> Scheduler {
-    Scheduler::new(SchedulerConfig::new(max_concurrency, max_waves).unwrap())
+fn scheduler(max_concurrency: usize, max_waves: usize) -> LocalScheduler {
+    LocalScheduler::new(SchedulerConfig::new(max_concurrency, max_waves).unwrap())
 }
 
 #[tokio::test]
 async fn failed_member_does_not_cancel_fixed_wave() {
-    let graph = Graph::build(
+    let graph = Graph::<_, String>::build(
         vec![
             Node::new(
                 NodeId::new("w1"),
@@ -102,11 +95,23 @@ async fn failed_member_does_not_cancel_fixed_wave() {
         ],
         vec![],
         vec![],
+        NodeId::new("w1"),
     )
     .unwrap();
     let run = scheduler(1, 1)
-        .run(&graph, "fixed".into(), initial_state(), vec![])
-        .await;
+        .run(
+            &graph,
+            GraphInput::new(
+                graph
+                    .entries
+                    .iter()
+                    .map(|id| (id.clone(), Input::new(vec![])))
+                    .collect(),
+            ),
+            RunContext::root("fixed".into(), 4, Arc::new(())),
+        )
+        .await
+        .unwrap();
     assert_eq!(run.status(), RunStatus::Failed);
     assert_eq!(run.waves(), 1);
     assert_eq!(run.state().count, 2);
@@ -121,7 +126,7 @@ async fn failed_member_does_not_cancel_fixed_wave() {
 
 #[tokio::test]
 async fn panic_and_business_error_keep_their_node_keys() {
-    let graph = Graph::build(
+    let graph = Graph::<_, String>::build(
         vec![
             Node::new(
                 NodeId::new("panic"),
@@ -140,11 +145,23 @@ async fn panic_and_business_error_keep_their_node_keys() {
         ],
         vec![],
         vec![],
+        NodeId::new("panic"),
     )
     .unwrap();
     let run = scheduler(2, 1)
-        .run(&graph, "tasks".into(), initial_state(), vec![])
-        .await;
+        .run(
+            &graph,
+            GraphInput::new(
+                graph
+                    .entries
+                    .iter()
+                    .map(|id| (id.clone(), Input::new(vec![])))
+                    .collect(),
+            ),
+            RunContext::root("tasks".into(), 4, Arc::new(())),
+        )
+        .await
+        .unwrap();
     assert_eq!(run.errors().len(), 2);
     assert!(matches!(
         &run.errors()[0],
@@ -161,7 +178,7 @@ async fn panic_and_business_error_keep_their_node_keys() {
 #[tokio::test]
 async fn escaped_state_reports_invariant_and_retains_output() {
     let leaked = Arc::new(Mutex::new(None));
-    let graph = Graph::build(
+    let graph = Graph::<_, String>::build(
         vec![Node::new(
             NodeId::new("leak"),
             Worker {
@@ -171,11 +188,23 @@ async fn escaped_state_reports_invariant_and_retains_output() {
         )],
         vec![],
         vec![],
+        NodeId::new("leak"),
     )
     .unwrap();
     let run = scheduler(1, 1)
-        .run(&graph, "leak".into(), initial_state(), vec![])
-        .await;
+        .run(
+            &graph,
+            GraphInput::new(
+                graph
+                    .entries
+                    .iter()
+                    .map(|id| (id.clone(), Input::new(vec![])))
+                    .collect(),
+            ),
+            RunContext::root("leak".into(), 4, Arc::new(())),
+        )
+        .await
+        .unwrap();
     assert!(matches!(run.errors(), [RunError::Invariant(_)]));
     assert_eq!(run.state().count, 0);
     assert!(
@@ -190,7 +219,7 @@ async fn escaped_state_reports_invariant_and_retains_output() {
 #[tokio::test]
 async fn zero_wave_quota_starts_no_task() {
     let calls = Arc::new(AtomicUsize::new(0));
-    let graph = Graph::build(
+    let graph = Graph::<_, String>::build(
         vec![Node::new(
             NodeId::new("entry"),
             Worker {
@@ -200,11 +229,23 @@ async fn zero_wave_quota_starts_no_task() {
         )],
         vec![],
         vec![],
+        NodeId::new("entry"),
     )
     .unwrap();
     let run = scheduler(1, 0)
-        .run(&graph, "quota".into(), initial_state(), vec![])
-        .await;
+        .run(
+            &graph,
+            GraphInput::new(
+                graph
+                    .entries
+                    .iter()
+                    .map(|id| (id.clone(), Input::new(vec![])))
+                    .collect(),
+            ),
+            RunContext::root("quota".into(), 4, Arc::new(())),
+        )
+        .await
+        .unwrap();
     assert!(matches!(run.errors(), [RunError::MaxWaves]));
     assert_eq!(calls.load(Ordering::Relaxed), 0);
     let entry = run.node(&NodeKey::Static(NodeId::new("entry"))).unwrap();
@@ -215,20 +256,21 @@ async fn zero_wave_quota_starts_no_task() {
 #[test]
 fn graph_validation_and_static_single_writer_analysis() {
     assert!(matches!(SchedulerConfig::new(0, 1), Err(Error::Config(_))));
-    let duplicate = Graph::<TestState>::build(
+    let duplicate = Graph::<_, String>::build(
         vec![
             Node::new(NodeId::new("a"), Worker::ok("a")),
             Node::new(NodeId::new("a"), Worker::ok("a")),
         ],
         vec![],
         vec![],
+        NodeId::new("a"),
     );
     assert!(matches!(
         duplicate,
         Err(Error::Graph(GraphError::DuplicateNode { .. }))
     ));
 
-    let conflict = Graph::<TestState>::build(
+    let conflict = Graph::<_, String>::build(
         vec![
             Node::new(NodeId::new("a"), Worker::ok("a")),
             Node::new(NodeId::new("b"), Worker::ok("b")).writes(vec![TestStateField::Title]),
@@ -258,6 +300,7 @@ fn graph_validation_and_static_single_writer_analysis() {
             },
         ],
         vec![],
+        NodeId::new("d"),
     );
     assert!(matches!(
         conflict,

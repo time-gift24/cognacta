@@ -11,6 +11,9 @@ bon.workspace = true
 cognacta-derive.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+uuid.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
 trybuild.workspace = true
+tracing-subscriber.workspace = true
