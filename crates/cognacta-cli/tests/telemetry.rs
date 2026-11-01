@@ -1,4 +1,3 @@
-#[path = "../../cognacta-collector/tests/support/mod.rs"]
 mod support;
 use std::process::{Command, Stdio};
 use support::*;

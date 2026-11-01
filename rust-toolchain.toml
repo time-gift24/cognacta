@@ -2,4 +2,4 @@
 # Pinned for reproducible builds and a stable rustfmt/clippy baseline.
 # Bump intentionally, then run `cargo fmt --all` once to re-baseline.
 channel = "1.98.1"
-components = ["rustfmt", "clippy"]
+components = ["rustfmt", "clippy", "rust-src", "rust-analyzer"]

@@ -1,4 +1,4 @@
-// Local HTTP fixture shared by Collector and CLI integration targets. No external services.
+// Local HTTP fixture for Collector integration targets. No external services.
 use std::{
     io::{BufRead, BufReader, Read, Write},
     net::TcpListener,
