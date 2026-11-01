@@ -1,12 +1,10 @@
-> **继续有效（2026-10-31）**：本规格仅约束保留的 Collector 独立运行时与 CLI 通用生命周期；场景使用标准 `tracing` 和 OpenTelemetry Metrics API 的通用测试 fixture，不依赖已删除的 core、provider 或业务命令，也不恢复旧 Generation 指标契约。
-
-# Spec Delta
+# observability-runtime Specification
 
 ## Purpose
 
 为应用提供随进程生命周期管理的可观测运行能力，以标准协议输出日志、链路和指标，并将监控后端、网络故障及输出背压与业务执行隔离，使调用方可以独立选择是否初始化和接入哪种监控平台。
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Explicit process lifecycle
 
@@ -67,6 +65,11 @@
 
 - **WHEN** stderr 管道不被读取，本地日志队列已经填满
 - **THEN** 后续本地遥测日志允许丢弃，业务仍推进，不进行同步写 stderr 的兜底
+
+#### Scenario: Events with an unentered explicit parent remain bounded
+
+- **WHEN** 已启用 traces，调用方持续向尚未 enter 的 span 发送显式 parent 事件
+- **THEN** 首条事件使 SDK span 激活，缓存立即服从 SDK 事件数量上限；保留首事件前设置的 parent、采样决定及 trace/span 关联，不进入当前上下文、不提前结束 span，超过上限允许丢弃
 
 ### Requirement: Telemetry failure preserves business behavior
 

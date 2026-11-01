@@ -4,8 +4,8 @@ use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::{format_ident, quote};
 use syn::{
-    Data, DeriveInput, Expr, Fields, Ident, Token, Type, parse::Parse, parse::ParseStream,
-    spanned::Spanned,
+    Data, DeriveInput, Expr, Fields, Ident, Token, Type, ext::IdentExt, parse::Parse,
+    parse::ParseStream, spanned::Spanned, visit_mut::VisitMut,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -54,6 +54,29 @@ impl Parse for ReducerAttribute {
     }
 }
 
+struct StateSelf(syn::Path);
+
+impl VisitMut for StateSelf {
+    // Nested items have their own Self, independent of the surrounding State.
+    fn visit_item_mut(&mut self, _item: &mut syn::Item) {}
+
+    fn visit_path_mut(&mut self, path: &mut syn::Path) {
+        syn::visit_mut::visit_path_mut(self, path);
+        if path.leading_colon.is_none()
+            && path
+                .segments
+                .first()
+                .is_some_and(|segment| segment.ident == "Self")
+        {
+            let mut replacement = self.0.clone();
+            replacement
+                .segments
+                .extend(path.segments.iter().skip(1).cloned());
+            *path = replacement;
+        }
+    }
+}
+
 #[proc_macro_derive(State, attributes(reducer))]
 pub fn state(input: TokenStream) -> TokenStream {
     syn::parse(input)
@@ -83,10 +106,23 @@ fn expand(input: DeriveInput) -> Result<proc_macro2::TokenStream, Error> {
             ));
         }
     };
-    let delta_name = format_ident!("{name}Delta");
-    let field_name = format_ident!("{name}Field");
+    let delta_name = format_ident!("{}Delta", name.unraw(), span = Span::call_site());
+    let field_name = format_ident!("{}Field", name.unraw(), span = Span::call_site());
     let generics = input.generics;
     let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
+    let mut state_path: syn::Path = syn::parse_quote!(#name #type_generics);
+    if let syn::PathArguments::AngleBracketed(arguments) = &mut state_path
+        .segments
+        .last_mut()
+        .expect("state type has a name")
+        .arguments
+    {
+        arguments.colon2_token = Some(Default::default());
+    }
+    let mut state_self = StateSelf(state_path);
+    let mut delta_generics = generics.clone();
+    state_self.visit_generics_mut(&mut delta_generics);
+    let (delta_impl_generics, _, delta_where_clause) = delta_generics.split_for_impl();
 
     let mut metadata = Vec::with_capacity(fields.len());
     let mut identities = HashMap::new();
@@ -123,7 +159,10 @@ fn expand(input: DeriveInput) -> Result<proc_macro2::TokenStream, Error> {
                 "field has no valid State identity",
             ));
         }
-        let variant = format_ident!("{pascal}");
+        let mut variant = syn::parse_str::<Ident>(&pascal)
+            .or_else(|_| syn::parse_str::<Ident>(&format!("_{pascal}")))
+            .map_err(|_| Error::new(ident.span(), "field has no valid State identity"))?;
+        variant.set_span(ident.span());
         if let Some(previous) = identities.insert(variant.clone(), ident.clone()) {
             return Err(Error::new(
                 ident.span(),
@@ -134,8 +173,11 @@ fn expand(input: DeriveInput) -> Result<proc_macro2::TokenStream, Error> {
     }
 
     let delta_fields = metadata.iter().map(|(ident, ty, _, attr)| {
-        let reducer = &attr.reducer;
-        quote!(#visibility #ident: Option<<#reducer as ::cognacta_core::Reducer<#ty>>::Delta>)
+        let mut ty = ty.clone();
+        let mut reducer = attr.reducer.clone();
+        state_self.visit_type_mut(&mut ty);
+        state_self.visit_type_mut(&mut reducer);
+        quote!(#visibility #ident: ::core::option::Option<<#reducer as ::cognacta_core::Reducer<#ty>>::Delta>)
     });
     let field_variants = metadata.iter().map(|(_, _, variant, _)| variant);
     let field_metadata = metadata.iter().map(|(ident, ty, variant, attr)| {
@@ -162,85 +204,98 @@ fn expand(input: DeriveInput) -> Result<proc_macro2::TokenStream, Error> {
             }
         }
     });
-    let staging = metadata.iter().map(|(ident, ty, _, attr)| {
+    let mut staging = Vec::new();
+    let mut reductions = Vec::new();
+    let mut finishes = Vec::new();
+    let mut assignments = Vec::new();
+    for (index, (ident, ty, _, attr)) in metadata.iter().enumerate() {
         let reducer = &attr.reducer;
         let name = ident.to_string();
-        let staged = format_ident!("__cognacta_staged_{ident}");
+        let staged = format_ident!("__cognacta_staged_{index}");
+        let instance = format_ident!("__cognacta_reducer_{index}");
         let init = attr.init.as_ref().map_or_else(
             || quote!(<#reducer as ::core::default::Default>::default()),
             |init| quote!(#init),
         );
-        quote! {
-            let mut #staged: Option<#ty> = None;
-            if deltas.iter().any(|delta| delta.#ident.is_some()) {
-                let mut reducer: #reducer = #init;
-                for delta in &mut deltas {
-                    if let Some(update) = delta.#ident.take() {
-                        let current = #staged.as_ref().unwrap_or(&self.#ident);
-                        let next = ::cognacta_core::Reducer::reduce(&mut reducer, current, update)
-                            .map_err(|error| match error {
-                                ::cognacta_core::Error::Merge(
-                                    ::cognacta_core::MergeError::Overflow { field: None }
-                                ) => ::cognacta_core::Error::Merge(
-                                    ::cognacta_core::MergeError::Overflow { field: Some(#name) }
-                                ),
-                                error => ::cognacta_core::Error::Merge(
-                                    ::cognacta_core::MergeError::Reduce {
-                                        field: Some(#name),
-                                        source: Box::new(error),
-                                    }
-                                ),
-                            })?;
-                        #staged = Some(next);
-                    }
-                }
-                if let Some(value) = #staged.take() {
-                    let next = ::cognacta_core::Reducer::finish(reducer, value)
-                        .map_err(|error| match error {
-                            ::cognacta_core::Error::Merge(
-                                ::cognacta_core::MergeError::Overflow { field: None }
-                            ) => ::cognacta_core::Error::Merge(
-                                ::cognacta_core::MergeError::Overflow { field: Some(#name) }
-                            ),
-                            error => ::cognacta_core::Error::Merge(
-                                ::cognacta_core::MergeError::Finish {
-                                    field: Some(#name),
-                                    source: Box::new(error),
-                                }
-                            ),
-                        })?;
-                    #staged = Some(next);
-                }
+        staging.push(quote! {
+            let mut #staged: ::core::option::Option<#ty> = ::core::option::Option::None;
+            let mut #instance: ::core::option::Option<#reducer> =
+                if deltas.iter().any(|delta| delta.#ident.is_some()) {
+                    ::core::option::Option::Some(#init)
+                } else {
+                    ::core::option::Option::None
+                };
+        });
+        reductions.push(quote! {
+            if let ::core::option::Option::Some(update) = __cognacta_delta.#ident {
+                let current = #staged.as_ref().unwrap_or(&self.#ident);
+                let next = ::cognacta_core::Reducer::reduce(
+                    #instance.as_mut().expect("updated field has a reducer"), current, update
+                ).map_err(|error| match error {
+                    ::cognacta_core::Error::Merge(
+                        ::cognacta_core::MergeError::Overflow { field: ::core::option::Option::None }
+                    ) => ::cognacta_core::Error::Merge(
+                        ::cognacta_core::MergeError::Overflow { field: ::core::option::Option::Some(#name) }
+                    ),
+                    error => ::cognacta_core::Error::Merge(
+                        ::cognacta_core::MergeError::Reduce {
+                            field: ::core::option::Option::Some(#name),
+                            source: ::std::boxed::Box::new(error),
+                        }
+                    ),
+                })?;
+                #staged = ::core::option::Option::Some(next);
             }
-        }
-    });
-    let assignments = metadata.iter().map(|(ident, _, _, _)| {
-        let staged = format_ident!("__cognacta_staged_{ident}");
-        quote! {
-            if let Some(value) = #staged {
+        });
+        finishes.push(quote! {
+            if let (::core::option::Option::Some(reducer), ::core::option::Option::Some(value)) =
+                (#instance, #staged.take())
+            {
+                let next = ::cognacta_core::Reducer::finish(reducer, value)
+                    .map_err(|error| match error {
+                        ::cognacta_core::Error::Merge(
+                            ::cognacta_core::MergeError::Overflow { field: ::core::option::Option::None }
+                        ) => ::cognacta_core::Error::Merge(
+                            ::cognacta_core::MergeError::Overflow { field: ::core::option::Option::Some(#name) }
+                        ),
+                        error => ::cognacta_core::Error::Merge(
+                            ::cognacta_core::MergeError::Finish {
+                                field: ::core::option::Option::Some(#name),
+                                source: ::std::boxed::Box::new(error),
+                            }
+                        ),
+                    })?;
+                #staged = ::core::option::Option::Some(next);
+            }
+        });
+        assignments.push(quote! {
+            if let ::core::option::Option::Some(value) = #staged {
                 self.#ident = value;
             }
-        }
-    });
+        });
+    }
     let field_idents = metadata
         .iter()
         .map(|(ident, _, _, _)| ident)
         .collect::<Vec<_>>();
 
     Ok(quote! {
-        #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+        #[derive(
+            ::core::fmt::Debug, ::core::marker::Copy, ::core::clone::Clone,
+            ::core::cmp::Eq, ::core::cmp::PartialEq, ::core::hash::Hash,
+        )]
         #visibility enum #field_name {
             #(#field_variants,)*
         }
 
-        #visibility struct #delta_name #generics #where_clause {
+        #visibility struct #delta_name #delta_generics #delta_where_clause {
             #(#delta_fields,)*
         }
 
-        impl #impl_generics ::core::default::Default for #delta_name #type_generics #where_clause {
+        impl #delta_impl_generics ::core::default::Default for #delta_name #type_generics #delta_where_clause {
             fn default() -> Self {
                 Self {
-                    #(#field_idents: None,)*
+                    #(#field_idents: ::core::option::Option::None,)*
                 }
             }
         }
@@ -253,19 +308,23 @@ fn expand(input: DeriveInput) -> Result<proc_macro2::TokenStream, Error> {
                 &[#(#field_metadata,)*]
             }
 
-            fn merge_batch(&mut self, mut deltas: Vec<Self::Delta>)
+            fn merge_batch(&mut self, deltas: ::std::vec::Vec<Self::Delta>)
                 -> ::core::result::Result<(), ::cognacta_core::Error>
             {
-                let mut conflicts = Vec::new();
+                let mut conflicts = ::std::vec::Vec::new();
                 #(#prechecks)*
                 if !conflicts.is_empty() {
-                    return Err(::cognacta_core::Error::Merge(
+                    return ::core::result::Result::Err(::cognacta_core::Error::Merge(
                         ::cognacta_core::MergeError::SingleWriterConflicts { fields: conflicts }
                     ));
                 }
                 #(#staging)*
+                for __cognacta_delta in deltas {
+                    #(#reductions)*
+                }
+                #(#finishes)*
                 #(#assignments)*
-                Ok(())
+                ::core::result::Result::Ok(())
             }
         }
     })

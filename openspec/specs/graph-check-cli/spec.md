@@ -1,4 +1,10 @@
-## ADDED Requirements
+# graph-check-cli Specification
+
+## Purpose
+
+定义默认关闭的 CLI dev 图验收入口，以六类确定性图和真实运行结果验证内核行为，明确最终报告、预期失败、退出码及遥测故障隔离，供开发时重复执行验收。
+
+## Requirements
 
 ### Requirement: Graph checks are gated by the dev Cargo feature
 
@@ -157,7 +163,7 @@ CLI SHALL 只输出最终文本报告，不增加逐wave观察接口。每变体
 
 ### Requirement: Process observation preserves verification behavior
 
-CLI SHALL 复用现有Collector初始化/关闭和业务结束后的3秒关闭/最终诊断总预算；本轮 SHALL 不新增日志、span或指标。最终报告 SHALL 仅包含固定合成业务数据与安全错误分类，不输出凭据、真实用户内容或完整source链。遥测失败/背压 SHALL 不改变业务报告与验收退出码。
+CLI SHALL 复用现有Collector初始化/关闭和业务结束后的3秒关闭/最终诊断总预算；图验收入口 SHALL 不新增日志、span或指标。最终报告 SHALL 仅包含固定合成业务数据与安全错误分类，不输出凭据、真实用户内容或完整source链。遥测失败/背压 SHALL 不改变业务报告与验收退出码。
 
 #### Scenario: Telemetry cannot export or stderr is blocked
 

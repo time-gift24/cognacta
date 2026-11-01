@@ -1,10 +1,10 @@
+# Graph 内核设计
+
 ## Context
 
-本变更将新图内核落在 Cognacta。当前仓库仅保留 CLI 基础入口和独立 Collector；旧 Cluster/Run/Scheduler 已删除，旧 change 已作废。本轮用户授权新增本 change 的设计文件，未要求实现代码。
+本文记录已实现的 Cognacta 图内核与 CLI dev 验收入口，补充 [图执行规格](spec.md)、[State/reducer 规格](../typed-state-reducers/spec.md)及 [CLI 规格](../graph-check-cli/spec.md)中的公共 API 与实施约束。
 
-设计参考为兄弟仓库 Prodagent 的 [Rust MVP 实施设计](../../../../prodagent/docs/zh/design/rust-mvp-implementation.md)、最新 learning-records 及其中列出的六份 reference。参考文件不随 Cognacta 发布，也不是构建依赖；实施所需契约在本 change 内明确。Prodagent 不再建立另一套 Rust 实现；不恢复旧 Cluster、Goto 或 associated Input 接口。
-
-会话已确认：采用默认关闭的 CLI `dev` feature；六类确定性图，无 agent loop；预期失败通过断言后仍退出 0；只要最终报告；不新增日志、span、指标或逐 wave 观察接口。核心名词沿用 Graph、NodeInstance、Outcome、Directive、Transition、Deliver。Run Completed 表示图无剩余工作，不能与 CONTEXT.md 中的 Generation Completed 混用。本轮不改该术语文件。
+核心名词为 Graph、NodeInstance、Outcome、Directive、Transition、Deliver。Run Completed 表示图无剩余工作。CLI dev feature 默认关闭，提供六类确定性图；预期失败通过断言后退出 0；仅提供最终报告，不新增日志、span、指标或逐 wave 观察接口。
 
 ## Goals / Non-Goals
 
@@ -32,11 +32,11 @@
 
 core 仅承载各入口可共享的图业务能力；样例 State、控制完成先后的同步对象、报告类型不进入 core。derive 是过程宏必须独立 crate 的实际需要。core 库本身正常提供能力，不设置 dev 开关；CLI 的可选依赖仅避免默认二进制带入样例运行路径。
 
-依赖统一在根 workspace.dependencies 管理。Tokio 复用已有版本，按实际用途启用 rt/sync 等 feature；bon、syn、quote、proc-macro2 由实施时锁定兼容版本并运行 cargo deny。必要模块按阶段增加，不为未来功能建空文件。
+依赖统一在根 workspace.dependencies 管理。Tokio 复用已有版本，按实际用途启用 rt/sync 等 feature；bon、syn、quote、proc-macro2 的版本由 Cargo.lock 锁定，依赖调整运行 cargo deny。
 
 ### 2. cognacta-core 完整公共契约
 
-以下代码是签名与类型契约，省略函数体，不是本轮实现。根导出本节全部公开业务类型、错误类型及 State derive；内部模块、类型擦除 adapter、ready/Sweep 算法、Input 组装器、路由计划和 task 映射保持私有。标准 trait 实现：身份类型 Clone/Eq/Hash/Debug；状态枚举 Copy/Eq/Debug；所有错误实现 thiserror 的 Error/Display/source。
+以下代码是签名与类型契约，省略函数体；实现位于 crates/cognacta-core。根导出本节全部公开业务类型、错误类型及 State derive；内部模块、类型擦除 adapter、ready/Sweep 算法、Input 组装器、路由计划和 task 映射保持私有。标准 trait 实现：身份类型 Clone/Eq/Hash/Debug；状态枚举 Copy/Eq/Debug；所有错误实现 thiserror 的 Error/Display/source。
 
 #### 2.1 身份、输入与节点
 
@@ -276,7 +276,7 @@ impl Error {
 
 GraphError/ConfigError/InputError/NodeError/MergeError 单向 From 到根 Error，保留 source；根 Error 公开 execution 构造器，供业务错误归入 Error::Node(NodeError::Execution)。标准错误 source 只指真实错误对象；输入的业务来源字段命名为 source_node，不让 thiserror 将 NodeId 误识别为错误来源。
 
-与 Prodagent 提案的明确适配：Input、NodeInstance、State、Reducer 都是本 crate 自有 API，统一使用 Result<T,Error>；Run.errors 仍是 Vec<RunError>。Scheduler 在节点出口包装 RunError::Node{key,source:原Error}，在 merge 出口包装 RunError::Merge(原Error)，因此自定义 reducer 的真实错误也有明确阶段，不靠无上下文互转识别。非法指令在内部校验边界直接产生 DirectiveError，再附 writer；它不是节点执行错误。Task 的 JoinError 装箱保留真实 source，避免把 Tokio 类型写进公共签名。
+错误边界：Input、NodeInstance、State、Reducer 都是本 crate 自有 API，统一使用 Result<T,Error>；Run.errors 仍是 Vec<RunError>。Scheduler 在节点出口包装 RunError::Node{key,source:原Error}，在 merge 出口包装 RunError::Merge(原Error)，因此自定义 reducer 的真实错误也有明确阶段，不靠无上下文互转识别。非法指令在内部校验边界直接产生 DirectiveError，再附 writer；它不是节点执行错误。Task 的 JoinError 装箱保留真实 source，避免把 Tokio 类型写进公共签名。
 
 独立 reducer 不知道 State 字段名时使用 field=None，derive 在实际字段边界填 Some(字段名)，保留内置 Overflow 分类；自定义 reduce/finish 返回其他 Error 时以 MergeError::Reduce/Finish 保留原 Error 为 source。SingleWriter 预检列出全部冲突字段。根 Error 的 Display 只给安全分类与受控上下文，不能展开业务文本/source 链。
 
@@ -317,48 +317,11 @@ final_output 仅 Completed 时为 Some(RunOutput)。优先选显式 terminal 普
 
 ### 6. 仅通过公开 API 的调用示范
 
-以下为设计调用片段：Count、Render 是 CLI 私有类型，实现上文 NodeInstance；明确行为为 Count 从 entry<String> 读取 hello，返回 u32(5) 和 LengthStateDelta{length:Some(5)}，Render 从 count 读 u32 并检查 State.length=5，返回 String("len=5") 和默认 Delta。它们不访问 core 私有模块。
-
-```rust
-use cognacta_core::{
-    Edge, Graph, Node, NodeId, Scheduler, SchedulerConfig, State,
-};
-
-#[derive(State)]
-pub struct LengthState {
-    #[reducer(cognacta_core::Override)]
-    pub length: u32,
-}
-
-let count = NodeId::new("count");
-let render = NodeId::new("render");
-let graph = Graph::<LengthState>::builder()
-    .nodes(vec![
-        Node::new(count.clone(), Count).writes(vec![LengthStateField::Length]),
-        Node::new(render.clone(), Render).terminal(true),
-    ])
-    .edges(vec![Edge { source: count.clone(), target: render.clone(), when: None }])
-    .entries(vec![count])
-    .build()?;
-let config = SchedulerConfig::builder().max_concurrency(2).max_waves(2).build()?;
-let scheduler = Scheduler::new(config);
-let run = scheduler.run_builder().graph(&graph).run_id("length-check".into())
-    .initial_state(LengthState { length: 0 })
-    .entry_values(vec![std::sync::Arc::new(String::from("hello"))
-        as cognacta_core::SharedValue])
-    .call().await;
-// 调用方通过 run.status()/errors()/node()/state()/final_output() 进行验收。
-let text = run.final_output()
-    .and_then(|result| result.values.get(&render))
-    .and_then(|value| value.as_ref().downcast_ref::<String>());
-// text 为 Option<&String>；验收器比较实际 text 与本例预期值。
-```
-
-实施必须增加外部公开 API 编译/执行样例，补上这两个执行体；本轮不给函数体或提前实现宏。
+可执行示范见 [公开 API 集成测试](../../../crates/cognacta-core/tests/public_api.rs)。该测试仅从 cognacta_core 根导入类型，构造不同 Output 类型的节点，通过 builder 执行并复用 Graph，读取 Run 的状态、State 和 final_output，不访问私有模块。
 
 ### 7. dev 命令及六类图
 
-未来调用：`cargo run -p cognacta-cli --features dev -- graph-check <SCENARIO>`。clap 只接受 `chain|diamond|branch|fanout|transition|settlement|all`。每个场景运行其固定变体；all 按表顺序跑全部 16 个变体，每个新建 Run，独立 State/同步对象。参数暂不开放任意图、输入、并发或波次数，以固定断言保证可复现。
+调用方式：`cargo run -p cognacta-cli --features dev -- graph-check <SCENARIO>`。clap 只接受 `chain|diamond|branch|fanout|transition|settlement|all`。每个场景运行其固定变体；all 按表顺序跑全部 16 个变体，每个新建 Run，独立 State/同步对象。参数暂不开放任意图、输入、并发或波次数，以固定断言保证可复现。
 
 | 家族 / 变体 | 图与固定输入 | 必须匹配的事实 |
 | --- | --- | --- |
@@ -420,7 +383,7 @@ assert=error-kind expected=Stalled actual=Stalled PASS
 
 沿用入口Collector初始化/关闭和现有3秒关闭/最终诊断总预算；该预算在业务结束后开始，不限制图执行时间。遥测不可用、输出背压或关闭超时不改变验收结论或业务stdout。报告写入失败是CLI自身I/O失败，与允许丢弃的遥测不同。
 
-本轮不新增日志、span或指标，已由用户确认：最终报告与断言足以满足当前开发验收，不存在运维接入需求。样例报告只展示固定合成数据，不打印真实业务输入、凭据或完整source链，也不转发为tracing事件。已有Collector的安全诊断保持原行为。测试验证未初始化core、不可用遥测端点和stderr背压下相同结论，不新建exporter。
+当前不新增日志、span或指标，原因是：最终报告与断言足以满足当前开发验收，不存在运维接入需求。样例报告只展示固定合成数据，不打印真实业务输入、凭据或完整source链，也不转发为tracing事件。已有Collector的安全诊断保持原行为。测试验证未初始化core、不可用遥测端点和stderr背压下相同结论，不新建exporter。
 
 ## Risks / Trade-offs
 
@@ -430,13 +393,3 @@ assert=error-kind expected=Stalled actual=Stalled PASS
 - [Append/Merge暂存复制成本] → 首版按字段复制保证Result原子性；实际规模证明瓶颈后再改，不要求整体State Clone。
 - [自定义回调破坏纯度或泄露State所有权] → 保留已确认的只读/不逃逸契约和Invariant分类，不通过新增锁或补偿框架掩盖。
 - [开发报告与运行错误混淆] → 分列run与check，expected/actual和全错误集合决定退出码。
-
-## Migration Plan
-
-按 tasks 依次实施类型与错误、derive、ready与调度、六类图和CLI报告。默认CLI保持现有行为；图命令仅在dev构建出现。独立core与derive能在不启用CLI dev时构建和测试。不迁移旧Run、不恢复旧命令/feature，不修改Prodagent或数据库。
-
-上线/回退不存在持久化数据变更；需要撤下开发入口时使用不含dev的构建。代码交付时运行仓库规定的fmt/check/clippy/UT、公开API与编译诊断测试、dev/default CLI检查、cargo deny。本轮纯文档只检查OpenSpec、引用、内容一致性和文件卫生，不报告Rust实现验证通过。
-
-## Open Questions
-
-当前范围无阻塞决策。运行依赖的精确兼容版本在实施时按现有锁文件和deny策略选择；未来模型接入、恢复和生产观测另建变更。本 change 的创建授权仅覆盖此目录，未扩展到项目规范、术语或其他架构文档。

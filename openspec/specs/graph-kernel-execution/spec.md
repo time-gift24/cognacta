@@ -1,8 +1,14 @@
-## ADDED Requirements
+# graph-kernel-execution Specification
+
+## Purpose
+
+定义 Cognacta 内存图内核的公共边界、统一输入、构图校验、ready 与 Sweep、固定 wave 调度、动态路由、错误汇总及结束条件，使不同并发配置下的执行和结算行为确定且可验证。
+
+## Requirements
 
 ### Requirement: Kernel has a reachable public API independent of dev
 
-cognacta-core SHALL 提供 design 第2节的根公开 API、统一 thiserror Error 和只读 Run 检查入口。Graph、Scheduler 及 State 能力 SHALL 不受 CLI dev feature 限制；内部 adapter、Input 组装器和调度状态 SHALL 不开放可变访问。
+cognacta-core SHALL 提供 [设计说明](design.md)第2节的根公开 API、统一 thiserror Error 和只读 Run 检查入口。Graph、Scheduler 及 State 能力 SHALL 不受 CLI dev feature 限制；内部 adapter、Input 组装器和调度状态 SHALL 不开放可变访问。
 
 #### Scenario: A downstream crate runs a graph
 
@@ -75,6 +81,11 @@ ready SHALL 是按普通节点注册顺序、随后实例创建顺序的全量�
 - **WHEN** 两条 live 入边的普通前驱分别 Completed 和 Skipped
 - **THEN** total=2、done=1，Any 可以 ready，All 不 ready；Skipped 不被重新解释为 Completed
 
+#### Scenario: Instances retain global creation order across templates
+
+- **WHEN** template 注册顺序为 first、second，Deliver 列表依次创建 second、first 的实例
+- **THEN** ready 中的实例顺序为 second、first，顺序敏感的 Delta 和路由按此顺序结算，不按 template 重新分组
+
 ### Requirement: Sweep is delayed and committed before recomputing
 
 Scheduler SHALL 仅在正常 ready 为空时 Sweep Pending、非 entry、有入边的普通节点。Sweep SHALL 返回候选而不自行修改 Run；本轮候选在临时判断中按 terminal/done 对待，提交 Skipped 后 SHALL 重新计算。Sweep SHALL 不计 wave、不跳过无入边的孤立非 entry。
@@ -83,6 +94,11 @@ Scheduler SHALL 仅在正常 ready 为空时 Sweep Pending、非 entry、有入�
 
 - **WHEN** A→D 为 false、D→E 为 live，且图已有其他 ready 工作
 - **THEN** 不立即跳过 D/E；正常 ready 为空后先提交 D Skipped，再重新计算并提交 E Skipped
+
+#### Scenario: Sweep candidates settle before another branch changes conditions
+
+- **WHEN** seed→D 与 D→E 均为 false，seed→E 的 gate 条件当前为 false，D 已成为本轮候选，另有等待 D terminal 的 F 会写入 gate=true
+- **THEN** E 将 D 临时视为 terminal 并同轮成为候选；先提交 D/E 为 Skipped，再执行可推进的 F，E 不因之后的 gate 变化执行
 
 ### Requirement: Template joins account for complete instance sets
 

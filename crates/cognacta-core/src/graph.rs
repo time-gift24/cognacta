@@ -256,6 +256,9 @@ impl<S: State> Graph<S> {
             changed = false;
             visits += 1;
             for edge in &self.edges {
+                if self.entries.contains(&edge.target) {
+                    continue;
+                }
                 if let Some(source_level) = levels.get(&edge.source).copied() {
                     let level = source_level + 1;
                     let current = levels.get(&edge.target).copied();

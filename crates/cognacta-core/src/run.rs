@@ -65,6 +65,7 @@ pub struct Run<S: State> {
     pub(crate) status: RunStatus,
     pub(crate) nodes: HashMap<NodeKey, NodeRun>,
     pub(crate) instances: HashMap<NodeId, Vec<NodeKey>>,
+    pub(crate) instance_order: Vec<NodeKey>,
     pub(crate) errors: Vec<RunError>,
     pub(crate) final_output: Option<RunOutput>,
     pub(crate) waves: usize,

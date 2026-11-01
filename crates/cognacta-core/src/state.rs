@@ -145,3 +145,112 @@ where
         Ok(value)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Mutex;
+
+    use super::*;
+
+    static EVENTS: Mutex<Vec<(&str, &str, u8)>> = Mutex::new(Vec::new());
+
+    struct Record(&'static str);
+
+    impl Record {
+        fn new(field: &'static str) -> Self {
+            EVENTS.lock().unwrap().push((field, "init", 0));
+            Self(field)
+        }
+    }
+
+    impl Reducer<u8> for Record {
+        type Delta = u8;
+        const POLICY: WritePolicy = WritePolicy::MultiWriter;
+
+        fn reduce(&mut self, current: &u8, delta: u8) -> Result<u8, Error> {
+            EVENTS.lock().unwrap().push((self.0, "reduce", delta));
+            Add.reduce(current, delta)
+        }
+
+        fn finish(self, value: u8) -> Result<u8, Error> {
+            EVENTS.lock().unwrap().push((self.0, "finish", value));
+            Ok(value)
+        }
+    }
+
+    #[derive(crate::State)]
+    struct OrderedState {
+        #[reducer(Record, init = Record::new("first"))]
+        first: u8,
+        #[reducer(Record, init = Record::new("last"))]
+        last: u8,
+    }
+
+    #[test]
+    fn batch_reduces_in_delta_order_before_finishing_any_field() {
+        let mut state = OrderedState { first: 0, last: 0 };
+        state
+            .merge_batch(vec![
+                OrderedStateDelta {
+                    first: Some(1),
+                    last: Some(2),
+                },
+                OrderedStateDelta {
+                    first: Some(3),
+                    last: Some(4),
+                },
+            ])
+            .unwrap();
+        assert_eq!((state.first, state.last), (4, 6));
+        assert_eq!(
+            std::mem::take(&mut *EVENTS.lock().unwrap()),
+            [
+                ("first", "init", 0),
+                ("last", "init", 0),
+                ("first", "reduce", 1),
+                ("last", "reduce", 2),
+                ("first", "reduce", 3),
+                ("last", "reduce", 4),
+                ("first", "finish", 4),
+                ("last", "finish", 6),
+            ]
+        );
+
+        state.first = 255;
+        state.last = 255;
+        let error = state
+            .merge_batch(vec![
+                OrderedStateDelta {
+                    first: Some(0),
+                    last: Some(1),
+                },
+                OrderedStateDelta {
+                    first: Some(1),
+                    last: Some(0),
+                },
+            ])
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            Error::Merge(MergeError::Overflow {
+                field: Some("last")
+            })
+        ));
+        assert_eq!((state.first, state.last), (255, 255));
+        assert_eq!(
+            std::mem::take(&mut *EVENTS.lock().unwrap()),
+            [
+                ("first", "init", 0),
+                ("last", "init", 0),
+                ("first", "reduce", 0),
+                ("last", "reduce", 1),
+            ]
+        );
+
+        state
+            .merge_batch(vec![OrderedStateDelta::default()])
+            .unwrap();
+        state.merge_batch(vec![]).unwrap();
+        assert!(EVENTS.lock().unwrap().is_empty());
+    }
+}

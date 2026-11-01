@@ -15,7 +15,7 @@ cognacta-derive = { version = "0.1.0", path = "crates/cognacta-derive" }
 bon = "3.8"
 proc-macro2 = "1"
 quote = "1"
-syn = { version = "2", features = ["full"] }
+syn = { version = "2", features = ["full", "visit-mut"] }
 trybuild = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

@@ -1,4 +1,10 @@
-## ADDED Requirements
+# typed-state-reducers Specification
+
+## Purpose
+
+定义强类型 State、Delta、字段元数据及 reducer 的编译期与运行时契约，保证按固定顺序归并、整批原子回写和 SingleWriter 冲突检测，并保持调用方类型、泛型与错误来源。
+
+## Requirements
 
 ### Requirement: Derive produces typed updates and reachable metadata
 
@@ -13,6 +19,11 @@ State derive SHALL 为具名字段struct生成同可见性的Delta、Field及Sta
 
 - **WHEN** 自定义reducer的Delta满足Send而不满足Sync/Clone
 - **THEN** 合法State和节点可编译并通过task移交Delta，框架不附加无用途约束
+
+#### Scenario: Legal names and recursive types preserve their meaning
+
+- **WHEN** State 使用 r#type、_1 字段或 Option<Box<Self>>，调用域同时定义 Option、Vec、Box 等名称，或泛型参数命名为 Vec
+- **THEN** derive 正常生成可用更新类型，Self 仍指原 State（包括其泛型约束），宏使用的标准类型不被调用域名称遮蔽；嵌套 item 的 Self 保留局部含义
 
 ### Requirement: Reducer diagnostics fail compilation at the source
 
@@ -44,16 +55,21 @@ Override SHALL 为SingleWriter直接替换；Append SHALL 按ready顺序追加�
 
 ### Requirement: Reducers initialize and finish once per updated field
 
-每批每个有更新字段 SHALL 构造一次reducer，默认Default或指定init；全部reduce成功后 SHALL finish一次。Sort SHALL 在内部finish成功后稳定排序一次。无更新字段 SHALL 不构造reducer、不调用finish；空批或全部None SHALL 直接成功。
+每批每个有更新字段 SHALL 构造一次reducer，默认Default或指定init；归并 SHALL 先按 Delta ready 顺序、再按字段声明顺序执行 reduce；所有字段的全部 reduce 成功后，按字段声明顺序对每个有更新字段 finish 一次。Sort SHALL 在内部finish成功后稳定排序一次。无更新字段 SHALL 不构造reducer、不调用finish；空批或全部None SHALL 直接成功。
 
 #### Scenario: Multiple updates share one reducer lifecycle
 
 - **WHEN** 同一列表字段收到三份Delta并使用Sort<Append,F>
 - **THEN** init一次、reduce三次、finish及排序各一次，相等元素保持原先顺序
 
+#### Scenario: Reduction errors precede every finish
+
+- **WHEN** first/last 均为 Add<u8> 且初值 255，按顺序收到增量 (0,1)、(1,0)
+- **THEN** 第一份 Delta 的 last 返回 Overflow，尚未调用任何字段的 finish，所有原字段保持 255
+
 ### Requirement: Batch merge is atomic across fields
 
-merge_batch SHALL 先预检写入，再以字段暂存值执行全部reduce/finish，全部成功后统一替换原字段。任何Result错误 SHALL 保持本批前全部State字段不变；原子性 SHALL 不承诺回滚自定义外部副作用、内部可变性或panic。归并失败 SHALL 保留成功NodeRun Output，不触发节点重试。
+merge_batch SHALL 先预检写入，再以字段暂存值执行全部reduce/finish，全部成功后统一替换原字段。任何Result错误 SHALL 保持本批前全部State字段不变；原子性 SHALL 不承诺回滚自定义外部副作用、内部可变性或panic。归并失败 SHALL 保留成功NodeRun Output，不触发节点重试。内置 Overflow 保留其分类并补充字段；其他自定义错误按 Reduce/Finish 包装并保留 source。
 
 #### Scenario: A later field rejects an update
 
@@ -62,7 +78,7 @@ merge_batch SHALL 先预检写入，再以字段暂存值执行全部reduce/fini
 
 #### Scenario: The last finish fails
 
-- **WHEN** 所有reduce及前面字段finish成功，最后一个字段finish返回错误
+- **WHEN** 所有reduce及前面字段finish成功，最后一个字段finish返回非 Overflow 的自定义错误
 - **THEN** 所有原State字段均未替换，错误保留字段、Finish阶段及真实source
 
 ### Requirement: SingleWriter is checked on every actual batch
@@ -92,3 +108,8 @@ Node.writes SHALL 声明可能写入的强类型字段。Graph SHALL 对可确�
 
 - **WHEN** 合法template被Deliver为两个实例，二者实际都返回同一Override字段的Some
 - **THEN** 构图可成功，运行在barrier返回SingleWriterConflicts，不能静默接受冲突
+
+#### Scenario: Explicit entries remain in the first wave despite incoming edges
+
+- **WHEN** entries 为 a、b，边为 a→b 与 a→c，只有 b/c 声明写入同一 SingleWriter 字段
+- **THEN** b 属于首 wave，c 属于后续 wave，构图接受串行写入；若 a/b 同时声明写入该字段，则构图拒绝冲突，不因 a→b 将 b 推迟分层

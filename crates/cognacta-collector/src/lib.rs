@@ -29,6 +29,7 @@ use std::{
     io::Write,
     mem::ManuallyDrop,
     sync::{
+        Arc, OnceLock,
         atomic::{AtomicBool, Ordering},
         mpsc,
     },
@@ -90,9 +91,12 @@ impl Collector {
                     );
                     EnvFilter::new(DEFAULT_FILTER)
                 });
+                let trace_dispatch = Arc::new(OnceLock::new());
                 let trace_layer = remote.traces.as_ref().map(|provider| {
-                    tracing_opentelemetry::layer()
-                        .with_tracer(provider.tracer("cognacta"))
+                    StartExplicitParent(trace_dispatch.clone())
+                        .and_then(
+                            tracing_opentelemetry::layer().with_tracer(provider.tracer("cognacta")),
+                        )
                         .with_filter(filter_fn(|meta| !internal(meta)))
                 });
                 let log_layer = remote.logs.as_ref().map(|provider| {
@@ -111,6 +115,8 @@ impl Collector {
                             .with_filter(filter_fn(|meta| !internal(meta))),
                     );
                 let dispatch = tracing::Dispatch::new(subscriber);
+                // Option<Layer> does not forward on_register_dispatch in tracing-subscriber 0.3.23.
+                let _ = trace_dispatch.set(dispatch.downgrade());
                 if ready_tx.send((dispatch, remote.metrics.clone())).is_err() {
                     return;
                 }
@@ -181,6 +187,22 @@ impl Collector {
                 component: "owner thread",
                 source: Box::new(source),
             }),
+        }
+    }
+}
+
+struct StartExplicitParent(Arc<OnceLock<tracing::dispatcher::WeakDispatch>>);
+
+impl<S> Layer<S> for StartExplicitParent
+where
+    S: tracing::Subscriber + for<'span> tracing_subscriber::registry::LookupSpan<'span>,
+{
+    fn on_event(&self, event: &tracing::Event<'_>, ctx: tracing_subscriber::layer::Context<'_, S>) {
+        if let Some(parent) = event.parent().and_then(|id| ctx.span(id))
+            && let Some(dispatch) = self.0.get().and_then(|dispatch| dispatch.upgrade())
+        {
+            // Start before the trace layer buffers events, so SDK limits apply without entering.
+            let _ = tracing_opentelemetry::get_otel_context(&parent.id(), &dispatch);
         }
     }
 }
@@ -266,6 +288,115 @@ impl<W: Write> Write for DrainWriter<W> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn explicit_parent_events_use_sdk_limits_without_entering() {
+        use opentelemetry::{
+            Context, KeyValue,
+            trace::{
+                Link, SpanContext, SpanId, SpanKind, TraceContextExt, TraceFlags, TraceId,
+                TraceState,
+            },
+        };
+        use opentelemetry_sdk::trace::{
+            Sampler, SamplingResult, SdkTracerProvider, ShouldSample, SpanData, SpanExporter,
+        };
+        use std::time::SystemTime;
+        use tracing_opentelemetry::OpenTelemetrySpanExt;
+
+        #[derive(Clone, Debug)]
+        struct Sampling(mpsc::Sender<SpanContext>);
+        impl ShouldSample for Sampling {
+            fn should_sample(
+                &self,
+                parent: Option<&Context>,
+                trace_id: TraceId,
+                name: &str,
+                kind: &SpanKind,
+                attributes: &[KeyValue],
+                links: &[Link],
+            ) -> SamplingResult {
+                self.0
+                    .send(parent.unwrap().span().span_context().clone())
+                    .unwrap();
+                Sampler::ParentBased(Box::new(Sampler::AlwaysOff))
+                    .should_sample(parent, trace_id, name, kind, attributes, links)
+            }
+        }
+        #[derive(Debug)]
+        struct Export(mpsc::Sender<SpanData>);
+        impl SpanExporter for Export {
+            async fn export(
+                &self,
+                batch: Vec<SpanData>,
+            ) -> opentelemetry_sdk::error::OTelSdkResult {
+                for span in batch {
+                    self.0.send(span).unwrap();
+                }
+                Ok(())
+            }
+        }
+
+        for flags in [TraceFlags::SAMPLED, TraceFlags::default()] {
+            let (sample_tx, samples) = mpsc::channel();
+            let (export_tx, exports) = mpsc::channel();
+            let provider = SdkTracerProvider::builder()
+                .with_sampler(Sampling(sample_tx))
+                .with_max_events_per_span(128)
+                .with_simple_exporter(Export(export_tx))
+                .build();
+            let trace_dispatch = Arc::new(OnceLock::new());
+            let subscriber = tracing_subscriber::registry().with(Some(
+                StartExplicitParent(trace_dispatch.clone())
+                    .and_then(tracing_opentelemetry::layer().with_tracer(provider.tracer("test")))
+                    .with_filter(filter_fn(|meta| !internal(meta))),
+            ));
+            let dispatch = tracing::Dispatch::new(subscriber);
+            trace_dispatch.set(dispatch.downgrade()).unwrap();
+            let parent = SpanContext::new(
+                TraceId::from(7),
+                SpanId::from(9),
+                flags,
+                true,
+                TraceState::default(),
+            );
+            let before_close = tracing::dispatcher::with_default(&dispatch, || {
+                let span = tracing::info_span!("unentered");
+                span.set_parent(Context::new().with_remote_span_context(parent.clone()))
+                    .unwrap();
+                assert!(
+                    samples.try_recv().is_err(),
+                    "set_parent must precede sampling"
+                );
+                for index in 0..5000 {
+                    tracing::info!(parent: &span, index, "event");
+                    if index == 0 {
+                        assert_eq!(samples.try_recv().unwrap(), parent);
+                        assert!(tracing::Span::current().is_disabled());
+                        assert!(!Context::current().has_active_span());
+                    }
+                }
+                assert!(samples.try_recv().is_err(), "sample each span only once");
+                let before_close = SystemTime::now();
+                drop(span);
+                before_close
+            });
+            if flags.is_sampled() {
+                let span = exports.try_recv().unwrap();
+                assert_eq!(span.span_context.trace_id(), parent.trace_id());
+                assert_eq!(span.parent_span_id, parent.span_id());
+                assert_eq!(span.events.events.len(), 128);
+                assert_eq!(span.events.dropped_count, 5000 - 128);
+                assert!(span.start_time < before_close);
+                assert!(
+                    span.end_time >= before_close,
+                    "activation must not end the span"
+                );
+            }
+            assert!(exports.try_recv().is_err());
+            provider.shutdown().unwrap();
+        }
+    }
 
     #[test]
     fn full_local_queue_recovers_during_shutdown() {
