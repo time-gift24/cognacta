@@ -16,6 +16,11 @@ pub enum Error {
     Node(#[from] NodeError),
     #[error("merge error: {0}")]
     Merge(#[from] MergeError),
+    #[error("scheduler failed")]
+    Scheduling {
+        #[source]
+        source: Box<dyn StdError + Send + Sync + 'static>,
+    },
 }
 
 impl Error {
@@ -24,6 +29,12 @@ impl Error {
         E: StdError + Send + Sync + 'static,
     {
         Self::Node(NodeError::Execution(Box::new(source)))
+    }
+
+    pub fn scheduling<E: StdError + Send + Sync + 'static>(source: E) -> Self {
+        Self::Scheduling {
+            source: Box::new(source),
+        }
     }
 }
 
@@ -88,6 +99,10 @@ pub enum InputError {
 
 #[derive(Debug, thiserror::Error)]
 pub enum NodeError {
+    #[error("node instance is not bound")]
+    UnboundInstance,
+    #[error("node instance is no longer available")]
+    DroppedInstance,
     #[error("node execution failed")]
     Execution(#[source] Box<dyn StdError + Send + Sync + 'static>),
     #[error("node task failed")]
@@ -126,6 +141,11 @@ pub enum DirectiveError {
 
 #[derive(Debug, thiserror::Error)]
 pub enum RunError {
+    #[error("scheduler failed during execution")]
+    Scheduling {
+        #[source]
+        source: Error,
+    },
     #[error("graph return value missing at {node}")]
     MissingOutput { node: NodeId },
     #[error("node {key} failed")]

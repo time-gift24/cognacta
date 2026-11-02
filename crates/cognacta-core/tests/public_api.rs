@@ -21,6 +21,7 @@ impl NodeInstance<LengthState> for Count {
         &self,
         input: &Input,
         _ctx: NodeContext<LengthState>,
+        _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<LengthState, Self::Output>, Error> {
         let length = input.entry::<String>()?.len() as u32;
         Ok(Outcome {
@@ -42,6 +43,7 @@ impl NodeInstance<LengthState> for Render {
         &self,
         input: &Input,
         ctx: NodeContext<LengthState>,
+        _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<LengthState, Self::Output>, Error> {
         let count = input.one::<u32>(&NodeId::new("count"))?;
         assert_eq!((count, ctx.state.length), (&5, 5));
@@ -71,16 +73,17 @@ async fn downstream_executes_and_reuses_a_graph() {
         .return_node(render.clone())
         .build()
         .unwrap();
-    let scheduler = LocalScheduler::new(
+    let scheduler: Arc<dyn Scheduler> = Arc::new(LocalScheduler::new(
         SchedulerConfig::builder()
             .max_concurrency(2)
             .max_waves(2)
             .build()
             .unwrap(),
-    );
+    ));
 
     for run_id in ["first", "second"] {
         let run = scheduler
+            .clone()
             .run_builder()
             .graph(&graph)
             .context(
@@ -118,6 +121,7 @@ async fn selected_non_clone_output_is_shared_through_a_child_call() -> Result<()
             &self,
             _: &Input,
             _: NodeContext<LengthState>,
+            _scheduler: Arc<dyn Scheduler>,
         ) -> Result<Outcome<LengthState, T>, Error> {
             Ok(Outcome {
                 value: Some(self.0.clone()),
@@ -134,6 +138,7 @@ async fn selected_non_clone_output_is_shared_through_a_child_call() -> Result<()
             &self,
             input: &Input,
             _: NodeContext<LengthState>,
+            _scheduler: Arc<dyn Scheduler>,
         ) -> Result<Outcome<LengthState, NonClone>, Error> {
             assert_eq!(input.entry_origins().len(), 1);
             assert_eq!(input.entry_origins()[0].origin, Origin::Run);
@@ -149,17 +154,15 @@ async fn selected_non_clone_output_is_shared_through_a_child_call() -> Result<()
         }
     }
 
-    struct Forward {
-        scheduler: Arc<LocalScheduler>,
-        child: Graph<LengthState, NonClone>,
-    }
-    impl NodeInstance<LengthState> for Forward {
-        type Output = NonClone;
+    struct Prepare;
+    impl NodeInstance<LengthState> for Prepare {
+        type Output = GraphInput;
         async fn run(
             &self,
             input: &Input,
-            ctx: NodeContext<LengthState>,
-        ) -> Result<Outcome<LengthState, NonClone>, Error> {
+            _ctx: NodeContext<LengthState>,
+            _scheduler: Arc<dyn Scheduler>,
+        ) -> Result<Outcome<LengthState, GraphInput>, Error> {
             assert_eq!(
                 input.one::<String>(&NodeId::new("unselected"))?,
                 "parent only"
@@ -173,20 +176,15 @@ async fn selected_non_clone_output_is_shared_through_a_child_call() -> Result<()
                 NodeId::new("receive"),
                 Input::new(vec![value.clone() as SharedValue]),
             )]));
-            let output = self
-                .scheduler
-                .call(&self.child, child_input, &ctx.run, &ctx.key)
-                .await?;
-            assert!(Arc::ptr_eq(&value, &output));
             Ok(Outcome {
-                value: Some(output),
+                value: Some(Arc::new(child_input)),
                 state_delta: Default::default(),
                 directive: None,
             })
         }
     }
 
-    let scheduler = Arc::new(LocalScheduler::new(SchedulerConfig::new(1, 4)?));
+    let scheduler: Arc<dyn Scheduler> = Arc::new(LocalScheduler::new(SchedulerConfig::new(1, 4)?));
     let child = Graph::<LengthState, NonClone>::builder()
         .nodes(vec![Node::new(NodeId::new("receive"), Receive)])
         .edges(vec![])
@@ -201,13 +199,8 @@ async fn selected_non_clone_output_is_shared_through_a_child_call() -> Result<()
                 NodeId::new("unselected"),
                 Emit(Arc::new(String::from("parent only"))),
             ),
-            Node::new(
-                NodeId::new("forward"),
-                Forward {
-                    scheduler: scheduler.clone(),
-                    child,
-                },
-            ),
+            Node::new(NodeId::new("forward"), Prepare),
+            Node::new(NodeId::new("child"), child),
         ])
         .edges(
             ["source", "unselected"]
@@ -216,10 +209,16 @@ async fn selected_non_clone_output_is_shared_through_a_child_call() -> Result<()
                     target: NodeId::new("forward"),
                     when: None,
                 })
-                .into(),
+                .into_iter()
+                .chain([Edge {
+                    source: NodeId::new("forward"),
+                    target: NodeId::new("child"),
+                    when: None,
+                }])
+                .collect(),
         )
         .entries(vec![])
-        .return_node(NodeId::new("forward"))
+        .return_node(NodeId::new("child"))
         .build()?;
     let input = GraphInput::new(
         ["source", "unselected"]
@@ -227,6 +226,7 @@ async fn selected_non_clone_output_is_shared_through_a_child_call() -> Result<()
             .into(),
     );
     let run = scheduler
+        .clone()
         .run(
             &graph,
             input,
@@ -253,3 +253,6 @@ async fn selected_non_clone_output_is_shared_through_a_child_call() -> Result<()
 mod nested;
 #[path = "examples/recursive.rs"]
 mod recursive;
+
+#[path = "examples/scheduling.rs"]
+mod scheduling;

@@ -10,8 +10,8 @@ use std::{
 use bon::bon;
 
 use crate::{
-    Directive, Error, GraphError, GraphInput, Input, NodeId, NodeKey, RunContext, SharedValue,
-    State, WritePolicy,
+    Directive, Error, GraphError, GraphInput, Input, NodeId, NodeInstance, NodeKey, RunContext,
+    Scheduler, SharedValue, State, WritePolicy,
 };
 
 #[derive(Clone)]
@@ -53,7 +53,12 @@ type ErasedFuture<'a, S> =
     Pin<Box<dyn Future<Output = Result<ErasedOutcome<S>, Error>> + Send + 'a>>;
 
 pub(crate) trait ErasedNode<S: State, R>: Send + Sync {
-    fn run<'a>(&'a self, input: &'a Input, ctx: NodeContext<S, R>) -> ErasedFuture<'a, S>;
+    fn run<'a>(
+        &'a self,
+        input: &'a Input,
+        ctx: NodeContext<S, R>,
+        scheduler: Arc<dyn Scheduler>,
+    ) -> ErasedFuture<'a, S>;
 }
 
 struct Adapter<N>(N);
@@ -64,14 +69,49 @@ where
     N: crate::NodeInstance<S, R>,
     R: Send + Sync + 'static,
 {
-    fn run<'a>(&'a self, input: &'a Input, ctx: NodeContext<S, R>) -> ErasedFuture<'a, S> {
+    fn run<'a>(
+        &'a self,
+        input: &'a Input,
+        ctx: NodeContext<S, R>,
+        scheduler: Arc<dyn Scheduler>,
+    ) -> ErasedFuture<'a, S> {
         Box::pin(async move {
-            let outcome = self.0.run(input, ctx).await?;
+            let outcome = self.0.run(input, ctx, scheduler).await?;
             Ok(ErasedOutcome {
                 value: outcome.value.map(|value| value as SharedValue),
                 state_delta: outcome.state_delta,
                 directive: outcome.directive,
             })
+        })
+    }
+}
+
+struct ResourceAdapter<S: State, R, F> {
+    instance: Arc<dyn ErasedNode<S, R>>,
+    project: F,
+}
+
+impl<S, R, T, F> ErasedNode<S, T> for ResourceAdapter<S, R, F>
+where
+    S: State,
+    R: Send + Sync + 'static,
+    T: Send + Sync + 'static,
+    F: Fn(&T) -> Result<Arc<R>, Error> + Send + Sync + 'static,
+{
+    fn run<'a>(
+        &'a self,
+        input: &'a Input,
+        ctx: NodeContext<S, T>,
+        scheduler: Arc<dyn Scheduler>,
+    ) -> ErasedFuture<'a, S> {
+        Box::pin(async move {
+            let resources = (self.project)(ctx.run.resources())?;
+            let context = NodeContext {
+                state: ctx.state,
+                run: ctx.run.with_resources(resources),
+                key: ctx.key,
+            };
+            self.instance.run(input, context, scheduler).await
         })
     }
 }
@@ -119,6 +159,55 @@ impl<S: State, R: Send + Sync + 'static> Node<S, R> {
     pub fn declared_targets(mut self, targets: Vec<DirectiveTarget>) -> Self {
         self.declared_targets = targets;
         self
+    }
+
+    /// Projects explicit resources at execution time, preserving identity and node policies.
+    pub fn with_resources<T, F>(self, project: F) -> Node<S, T>
+    where
+        T: Send + Sync + 'static,
+        F: Fn(&T) -> Result<Arc<R>, Error> + Send + Sync + 'static,
+    {
+        Node {
+            instance: Arc::new(ResourceAdapter {
+                instance: self.instance,
+                project,
+            }),
+            id: self.id,
+            join: self.join,
+            template: self.template,
+            output_type: self.output_type,
+            output_name: self.output_name,
+            writes: self.writes,
+            declared_targets: self.declared_targets,
+        }
+    }
+}
+
+impl<P, C, O, R> NodeInstance<P, R> for Graph<C, O, R>
+where
+    P: State,
+    C: State,
+    O: Send + Sync + 'static,
+    R: Send + Sync + 'static,
+{
+    type Output = O;
+
+    async fn run(
+        &self,
+        input: &Input,
+        ctx: NodeContext<P, R>,
+        scheduler: Arc<dyn Scheduler>,
+    ) -> Result<Outcome<P, O>, Error> {
+        let input = input.single_shared::<GraphInput>()?;
+        let child = ctx.run.child(&ctx.key).inspect_err(|_| {
+            crate::scheduler::observation::depth_rejected(&ctx.run, &ctx.key);
+        })?;
+        let value = scheduler.run(self, input, child).await?.into_result()?;
+        Ok(Outcome {
+            value: Some(value),
+            state_delta: Default::default(),
+            directive: None,
+        })
     }
 }
 

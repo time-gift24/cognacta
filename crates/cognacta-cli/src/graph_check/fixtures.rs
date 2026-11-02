@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use cognacta_core::{
     Add, Append, Directive, Edge, Error, Graph, GraphInput, Input, Join, LocalScheduler, Node,
-    NodeContext, NodeId, NodeInstance, NodeKey, Outcome, Override, Run, RunContext,
+    NodeContext, NodeId, NodeInstance, NodeKey, Outcome, Override, Run, RunContext, Scheduler,
     SchedulerConfig, SharedValue, State,
 };
 use tokio::sync::Notify;
@@ -45,7 +45,10 @@ async fn execute<S: State>(
     if let Some(error) = tests::startup_failure(case).await {
         return Err(error);
     }
-    let scheduler = LocalScheduler::new(SchedulerConfig::new(concurrency, waves)?);
+    let scheduler: Arc<dyn Scheduler> = Arc::new(LocalScheduler::new(SchedulerConfig::new(
+        concurrency,
+        waves,
+    )?));
     scheduler
         .run(
             graph,
@@ -71,6 +74,7 @@ impl NodeInstance<ChainState> for ChainA {
         &self,
         input: &Input,
         _ctx: NodeContext<ChainState>,
+        _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<ChainState, String>, Error> {
         Ok(Outcome {
             value: Some(Arc::new(input.entry::<String>()?.clone())),
@@ -87,6 +91,7 @@ impl NodeInstance<ChainState> for ChainB {
         &self,
         input: &Input,
         _ctx: NodeContext<ChainState>,
+        _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<ChainState, u32>, Error> {
         let length = input.one::<String>(&NodeId::new("A"))?.len() as u32;
         Ok(Outcome {
@@ -106,6 +111,7 @@ impl NodeInstance<ChainState> for ChainC {
         &self,
         input: &Input,
         ctx: NodeContext<ChainState>,
+        _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<ChainState, String>, Error> {
         let length = input.one::<u32>(&NodeId::new("B"))?;
         if ctx.state.length != *length {
@@ -247,6 +253,7 @@ impl NodeInstance<DiamondState> for DiamondA {
         &self,
         _input: &Input,
         _ctx: NodeContext<DiamondState>,
+        _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<DiamondState, String>, Error> {
         Ok(Outcome {
             value: Some(Arc::new("A".into())),
@@ -270,6 +277,7 @@ impl NodeInstance<DiamondState> for DiamondBranch {
         &self,
         _input: &Input,
         ctx: NodeContext<DiamondState>,
+        _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<DiamondState, u32>, Error> {
         if self.name == "B"
             && let Some(release) = &self.release
@@ -301,6 +309,7 @@ impl NodeInstance<DiamondState> for DiamondD {
         &self,
         input: &Input,
         ctx: NodeContext<DiamondState>,
+        _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<DiamondState, String>, Error> {
         let b = input.one::<u32>(&NodeId::new("B"))?;
         let c = input.one::<u32>(&NodeId::new("C"))?;
@@ -454,6 +463,7 @@ impl NodeInstance<EmptyState> for Text {
         &self,
         _input: &Input,
         _ctx: NodeContext<EmptyState>,
+        _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<EmptyState, String>, Error> {
         Ok(Outcome {
             value: Some(Arc::new(self.0.into())),
@@ -587,6 +597,7 @@ impl NodeInstance<FanoutState> for Planner {
         &self,
         _input: &Input,
         _ctx: NodeContext<FanoutState>,
+        _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<FanoutState, String>, Error> {
         let targets = (1..=self.0)
             .map(|job| cognacta_core::DeliverTarget {
@@ -610,6 +621,7 @@ impl NodeInstance<FanoutState> for FanoutWorker {
         &self,
         input: &Input,
         _ctx: NodeContext<FanoutState>,
+        _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<FanoutState, Job>, Error> {
         let job = *input.one::<Job>(&NodeId::new("planner"))?;
         Ok(Outcome {
@@ -630,6 +642,7 @@ impl NodeInstance<FanoutState> for Aggregate {
         &self,
         input: &Input,
         _ctx: NodeContext<FanoutState>,
+        _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<FanoutState, String>, Error> {
         let jobs = input.many::<Job>(&NodeId::new("worker"))?;
         Ok(Outcome {
@@ -787,6 +800,7 @@ impl NodeInstance<TransitionState> for TransitionA {
         &self,
         _input: &Input,
         _ctx: NodeContext<TransitionState>,
+        _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<TransitionState, String>, Error> {
         Ok(Outcome {
             value: Some(Arc::new("A".into())),
@@ -807,6 +821,7 @@ impl NodeInstance<TransitionState> for CountNode {
         &self,
         _input: &Input,
         ctx: NodeContext<TransitionState>,
+        _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<TransitionState, u32>, Error> {
         let next = ctx.state.count + 1;
         Ok(Outcome {
@@ -824,6 +839,7 @@ impl NodeInstance<TransitionState> for TransitionT {
         &self,
         input: &Input,
         ctx: NodeContext<TransitionState>,
+        _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<TransitionState, String>, Error> {
         let payload = input.one::<u32>(&NodeId::new("A"))?;
         Ok(Outcome {
@@ -968,6 +984,7 @@ impl NodeInstance<SettlementState> for Seed {
         &self,
         _input: &Input,
         _ctx: NodeContext<SettlementState>,
+        _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<SettlementState, String>, Error> {
         let targets = (1..=self.workers)
             .map(|index| cognacta_core::DeliverTarget {
@@ -997,6 +1014,7 @@ impl NodeInstance<SettlementState> for SettlementWorker {
         &self,
         input: &Input,
         _ctx: NodeContext<SettlementState>,
+        _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<SettlementState, String>, Error> {
         let name = input.one::<String>(&NodeId::new("seed"))?.clone();
         let failed = (self.kind == SettlementKind::NodeError && name == "w1")
@@ -1048,6 +1066,7 @@ impl NodeInstance<SettlementState> for SettlementAggregate {
         &self,
         input: &Input,
         _ctx: NodeContext<SettlementState>,
+        _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<SettlementState, String>, Error> {
         let values = input.many::<String>(&NodeId::new("worker"))?;
         Ok(Outcome {
@@ -1246,8 +1265,9 @@ pub(super) mod tests {
             &self,
             input: &Input,
             ctx: NodeContext<SettlementState>,
+            _scheduler: Arc<dyn Scheduler>,
         ) -> Result<Outcome<SettlementState, u32>, Error> {
-            let outcome = self.0.run(input, ctx).await?;
+            let outcome = self.0.run(input, ctx, _scheduler).await?;
             Ok(Outcome {
                 value: Some(Arc::new(123)),
                 state_delta: outcome.state_delta,
@@ -1282,7 +1302,7 @@ pub(super) mod tests {
         } else {
             std::collections::HashMap::new()
         });
-        LocalScheduler::new(SchedulerConfig::new(1, 1).unwrap())
+        (Arc::new(LocalScheduler::new(SchedulerConfig::new(1, 1).unwrap())) as Arc<dyn Scheduler>)
             .run(
                 &graph,
                 input,

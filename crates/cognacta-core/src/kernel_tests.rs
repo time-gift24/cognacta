@@ -7,7 +7,7 @@ use std::sync::{
 use crate::{
     Add, Append, Directive, Edge, Error, Graph, GraphError, Input, LocalScheduler, MergeError,
     Node, NodeContext, NodeError, NodeId, NodeInstance, NodeKey, NodeStatus, Outcome, Override,
-    RunError, RunStatus, SchedulerConfig, State,
+    RunError, RunStatus, Scheduler, SchedulerConfig, State,
 };
 
 #[derive(Default, State)]
@@ -52,6 +52,7 @@ impl NodeInstance<TestState> for Worker {
         &self,
         _input: &Input,
         ctx: NodeContext<TestState>,
+        _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<TestState, Self::Output>, Error> {
         if let Some(calls) = &self.calls {
             calls.fetch_add(1, Ordering::Relaxed);
@@ -75,8 +76,10 @@ impl NodeInstance<TestState> for Worker {
     }
 }
 
-fn scheduler(max_concurrency: usize, max_waves: usize) -> LocalScheduler {
-    LocalScheduler::new(SchedulerConfig::new(max_concurrency, max_waves).unwrap())
+fn scheduler(max_concurrency: usize, max_waves: usize) -> Arc<dyn Scheduler> {
+    Arc::new(LocalScheduler::new(
+        SchedulerConfig::new(max_concurrency, max_waves).unwrap(),
+    ))
 }
 
 #[tokio::test]

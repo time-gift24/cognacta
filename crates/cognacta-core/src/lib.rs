@@ -2,8 +2,8 @@
 //!
 //! A graph is a reusable definition. Each invocation validates explicit entries, initializes
 //! independent State and returns a typed result only after every wave settles. Resources are
-//! explicit Arc handles; recursive graph definitions should read them from `RunContext` rather
-//! than capture them permanently in nodes or initialization closures.
+//! explicit Arc handles. A Graph implements NodeInstance and can be declared with Node::new.
+//! Recursive definitions use ordinary Arc/Weak/OnceLock bindings, resolved only at execution.
 //!
 //! ```
 //! use std::{collections::HashMap, sync::Arc};
@@ -13,7 +13,7 @@
 //! struct Count;
 //! impl NodeInstance<Data> for Count {
 //!     type Output = usize;
-//!     async fn run(&self, input: &Input, _: NodeContext<Data>) -> Result<Outcome<Data, usize>, Error> {
+//!     async fn run(&self, input: &Input, _: NodeContext<Data>, _scheduler: Arc<dyn Scheduler>) -> Result<Outcome<Data, usize>, Error> {
 //!         let count = input.entry::<String>()?.len();
 //!         Ok(Outcome { value: Some(Arc::new(count)), state_delta: DataDelta { count: Some(count) }, directive: None })
 //!     }
@@ -26,7 +26,8 @@
 //!     .edges(vec![]).entries(vec![]).return_node(entry.clone()).build()?;
 //! let input = GraphInput::new(HashMap::from([(entry, Input::new(vec![Arc::new("hello".to_owned())]))]));
 //! let context = RunContext::root("root".into(), 4, Arc::new(()));
-//! let run = LocalScheduler::new(SchedulerConfig::new(1, 4)?).run(&graph, input, context).await?;
+//! let scheduler: Arc<dyn Scheduler> = Arc::new(LocalScheduler::new(SchedulerConfig::new(1, 4)?));
+//! let run = scheduler.run(&graph, input, context).await?;
 //! assert_eq!(run.state().count, 5);
 //! assert_eq!(*run.into_result()?, 5);
 //! # Ok(())
@@ -56,12 +57,15 @@ pub use graph::{
 pub use input::{GraphInput, Input, Origin, SharedValue, SourceRef};
 pub use run::{NodeRun, NodeStatus, Run, RunStatus};
 pub use scheduler::{
-    LocalScheduler, Scheduler, SchedulerConfig, SchedulerConfigBuilder, SchedulerRunBuilder,
-    scheduler_config_builder, scheduler_run_builder,
+    Execution, LocalScheduler, Scheduler, SchedulerConfig, SchedulerConfigBuilder,
+    SchedulerRunBuilder, scheduler_config_builder, scheduler_run_builder,
 };
 pub use state::{Add, Append, Merge, Override, Reducer, Sort, State, StateField, WritePolicy};
 
-use std::future::Future;
+use std::{
+    future::Future,
+    sync::{Arc, OnceLock, Weak},
+};
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Ord, PartialOrd)]
 pub struct NodeId(String);
@@ -99,6 +103,8 @@ pub struct DeliverTarget {
     pub key: String,
 }
 
+/// Reusable execution body of a Node. Graphs implement the same contract as leaf bodies.
+/// The runtime supplies the selected scheduler for this invocation; leaf bodies can ignore it.
 pub trait NodeInstance<S: State, R: Send + Sync + 'static = ()>: Send + Sync + 'static {
     type Output: Send + Sync + 'static;
 
@@ -106,7 +112,53 @@ pub trait NodeInstance<S: State, R: Send + Sync + 'static = ()>: Send + Sync + '
         &'a self,
         input: &'a Input,
         ctx: NodeContext<S, R>,
+        scheduler: Arc<dyn Scheduler>,
     ) -> impl Future<Output = Result<Outcome<S, Self::Output>, Error>> + Send + 'a;
+}
+
+impl<S: State, R: Send + Sync + 'static, N: NodeInstance<S, R>> NodeInstance<S, R> for Arc<N> {
+    type Output = N::Output;
+
+    async fn run(
+        &self,
+        input: &Input,
+        ctx: NodeContext<S, R>,
+        scheduler: Arc<dyn Scheduler>,
+    ) -> Result<Outcome<S, Self::Output>, Error> {
+        self.as_ref().run(input, ctx, scheduler).await
+    }
+}
+
+impl<S: State, R: Send + Sync + 'static, N: NodeInstance<S, R>> NodeInstance<S, R> for Weak<N> {
+    type Output = N::Output;
+
+    async fn run(
+        &self,
+        input: &Input,
+        ctx: NodeContext<S, R>,
+        scheduler: Arc<dyn Scheduler>,
+    ) -> Result<Outcome<S, Self::Output>, Error> {
+        self.upgrade()
+            .ok_or(NodeError::DroppedInstance)?
+            .run(input, ctx, scheduler)
+            .await
+    }
+}
+
+impl<S: State, R: Send + Sync + 'static, N: NodeInstance<S, R>> NodeInstance<S, R> for OnceLock<N> {
+    type Output = N::Output;
+
+    async fn run(
+        &self,
+        input: &Input,
+        ctx: NodeContext<S, R>,
+        scheduler: Arc<dyn Scheduler>,
+    ) -> Result<Outcome<S, Self::Output>, Error> {
+        self.get()
+            .ok_or(NodeError::UnboundInstance)?
+            .run(input, ctx, scheduler)
+            .await
+    }
 }
 
 #[cfg(test)]

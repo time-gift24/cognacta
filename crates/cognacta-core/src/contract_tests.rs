@@ -10,7 +10,7 @@ use std::{
 use crate::{
     DeliverTarget, Directive, DirectiveError, Edge, Error, Graph, Input, Join, LocalScheduler,
     Node, NodeContext, NodeId, NodeInstance, NodeKey, NodeStatus, Outcome, Reducer, RunError,
-    RunStatus, SchedulerConfig, SharedValue, State, WritePolicy,
+    RunStatus, Scheduler, SchedulerConfig, SharedValue, State, WritePolicy,
 };
 
 #[derive(Default, State)]
@@ -25,6 +25,7 @@ impl NodeInstance<EmptyState> for Produce {
         &self,
         _input: &Input,
         _ctx: NodeContext<EmptyState>,
+        _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<EmptyState, NonClone>, Error> {
         Ok(Outcome {
             value: Some(Arc::new(NonClone(7))),
@@ -41,6 +42,7 @@ impl NodeInstance<EmptyState> for Consume {
         &self,
         input: &Input,
         _ctx: NodeContext<EmptyState>,
+        _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<EmptyState, u32>, Error> {
         let source = NodeId::new("source");
         let value = input.one::<NonClone>(&source)?;
@@ -83,7 +85,8 @@ async fn non_clone_output_is_shared_once_across_duplicate_edges() {
         NodeId::new("target"),
     )
     .unwrap();
-    let run = LocalScheduler::new(SchedulerConfig::new(1, 2).unwrap())
+    let run = (Arc::new(LocalScheduler::new(SchedulerConfig::new(1, 2).unwrap()))
+        as Arc<dyn Scheduler>)
         .run(
             &graph,
             GraphInput::new(
@@ -109,6 +112,7 @@ impl NodeInstance<EmptyState> for Planner {
         &self,
         _input: &Input,
         _ctx: NodeContext<EmptyState>,
+        _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<EmptyState, String>, Error> {
         let delivery = |key: &str| DeliverTarget {
             template: NodeId::new("worker"),
@@ -130,6 +134,7 @@ impl NodeInstance<EmptyState> for Worker {
         &self,
         _input: &Input,
         _ctx: NodeContext<EmptyState>,
+        _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<EmptyState, String>, Error> {
         Ok(Outcome {
             value: Some(Arc::new("work".into())),
@@ -151,7 +156,8 @@ async fn duplicate_instance_key_rejects_the_entire_route_batch() {
         NodeId::new("planner"),
     )
     .unwrap();
-    let run = LocalScheduler::new(SchedulerConfig::new(1, 2).unwrap())
+    let run = (Arc::new(LocalScheduler::new(SchedulerConfig::new(1, 2).unwrap()))
+        as Arc<dyn Scheduler>)
         .run(
             &graph,
             GraphInput::new(
@@ -182,6 +188,7 @@ impl NodeInstance<EmptyState> for TransitionSource {
         &self,
         _input: &Input,
         _ctx: NodeContext<EmptyState>,
+        _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<EmptyState, String>, Error> {
         Ok(Outcome {
             value: Some(Arc::new("source".into())),
@@ -202,6 +209,7 @@ impl NodeInstance<EmptyState> for LastTransition {
         &self,
         _input: &Input,
         _ctx: NodeContext<EmptyState>,
+        _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<EmptyState, String>, Error> {
         Ok(Outcome {
             value: Some(Arc::new("last".into())),
@@ -222,6 +230,7 @@ impl NodeInstance<EmptyState> for TransitionTarget {
         &self,
         input: &Input,
         _ctx: NodeContext<EmptyState>,
+        _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<EmptyState, u32>, Error> {
         assert!(input.one::<u32>(&NodeId::new("first")).is_err());
         let last = input.one::<u32>(&NodeId::new("last"))?;
@@ -257,7 +266,8 @@ async fn last_transition_replaces_payload_and_permit() {
         NodeId::new("target"),
     )
     .unwrap();
-    let run = LocalScheduler::new(SchedulerConfig::new(2, 2).unwrap())
+    let run = (Arc::new(LocalScheduler::new(SchedulerConfig::new(2, 2).unwrap()))
+        as Arc<dyn Scheduler>)
         .run(
             &graph,
             GraphInput::new(
@@ -284,6 +294,7 @@ impl NodeInstance<EmptyState> for NoOutput {
         &self,
         _input: &Input,
         _ctx: NodeContext<EmptyState>,
+        _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<EmptyState, String>, Error> {
         Ok(Outcome {
             value: None,
@@ -302,7 +313,8 @@ async fn completed_without_values_reports_missing_output() {
         NodeId::new("empty"),
     )
     .unwrap();
-    let run = LocalScheduler::new(SchedulerConfig::new(1, 1).unwrap())
+    let run = (Arc::new(LocalScheduler::new(SchedulerConfig::new(1, 1).unwrap()))
+        as Arc<dyn Scheduler>)
         .run(
             &graph,
             GraphInput::new(
@@ -352,6 +364,7 @@ impl NodeInstance<CellState> for CellNode {
         &self,
         _input: &Input,
         _ctx: NodeContext<CellState>,
+        _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<CellState, String>, Error> {
         Ok(Outcome {
             value: Some(Arc::new("cell".into())),
@@ -372,7 +385,8 @@ async fn send_but_not_sync_delta_crosses_the_node_boundary() {
         NodeId::new("cell"),
     )
     .unwrap();
-    let run = LocalScheduler::new(SchedulerConfig::new(1, 1).unwrap())
+    let run = (Arc::new(LocalScheduler::new(SchedulerConfig::new(1, 1).unwrap()))
+        as Arc<dyn Scheduler>)
         .run(
             &graph,
             GraphInput::new(
@@ -400,6 +414,7 @@ impl NodeInstance<EmptyState> for RearmNode {
         &self,
         input: &Input,
         _ctx: NodeContext<EmptyState>,
+        _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<EmptyState, u32>, Error> {
         let call = self.calls.fetch_add(1, Ordering::Relaxed) + 1;
         self.inputs
@@ -435,7 +450,8 @@ async fn rearm_preserves_attempts_and_entry_input_but_replaces_output() {
         NodeId::new("rearm"),
     )
     .unwrap();
-    let run = LocalScheduler::new(SchedulerConfig::new(1, 2).unwrap())
+    let run = (Arc::new(LocalScheduler::new(SchedulerConfig::new(1, 2).unwrap()))
+        as Arc<dyn Scheduler>)
         .run(
             &graph,
             GraphInput::new(
@@ -469,6 +485,7 @@ impl NodeInstance<EmptyState> for JoinTarget {
         &self,
         _input: &Input,
         _ctx: NodeContext<EmptyState>,
+        _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<EmptyState, String>, Error> {
         Ok(Outcome {
             value: Some(Arc::new("joined".into())),
@@ -509,7 +526,8 @@ async fn custom_join_receives_done_and_live_edge_counts() {
         NodeId::new("joined"),
     )
     .unwrap();
-    let run = LocalScheduler::new(SchedulerConfig::new(1, 2).unwrap())
+    let run = (Arc::new(LocalScheduler::new(SchedulerConfig::new(1, 2).unwrap()))
+        as Arc<dyn Scheduler>)
         .run(
             &graph,
             GraphInput::new(

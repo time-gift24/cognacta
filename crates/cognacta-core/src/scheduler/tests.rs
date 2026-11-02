@@ -26,6 +26,7 @@ impl NodeInstance<TestState> for TestNode {
         &self,
         _input: &Input,
         ctx: NodeContext<TestState>,
+        _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<TestState, NodeKey>, Error> {
         Ok(Outcome {
             value: Some(Arc::new(ctx.key.clone())),
@@ -77,7 +78,9 @@ async fn instances_settle_in_creation_order_across_templates() {
     )
     .unwrap();
     for concurrency in [1, 2] {
-        let run = LocalScheduler::new(SchedulerConfig::new(concurrency, 2).unwrap())
+        let run = (Arc::new(LocalScheduler::new(
+            SchedulerConfig::new(concurrency, 2).unwrap(),
+        )) as Arc<dyn Scheduler>)
             .run(
                 &graph,
                 GraphInput::new(
@@ -145,7 +148,8 @@ async fn sweep_settles_dead_candidates_before_state_changes() {
         NodeId::new("F"),
     )
     .unwrap();
-    let run = LocalScheduler::new(SchedulerConfig::new(1, 3).unwrap())
+    let run = (Arc::new(LocalScheduler::new(SchedulerConfig::new(1, 3).unwrap()))
+        as Arc<dyn Scheduler>)
         .run(
             &graph,
             GraphInput::new(
@@ -196,7 +200,8 @@ async fn explicit_entry_writes_before_its_successor_wave() {
         NodeId::new("c"),
     )
     .unwrap();
-    let run = LocalScheduler::new(SchedulerConfig::new(2, 2).unwrap())
+    let run = (Arc::new(LocalScheduler::new(SchedulerConfig::new(2, 2).unwrap()))
+        as Arc<dyn Scheduler>)
         .run(
             &graph,
             GraphInput::new(

@@ -44,6 +44,10 @@ impl Input {
             .map(|source| &self.values[&source.value_type][source.index])
     }
 
+    pub(crate) fn single_shared<T: Any + Send + Sync>(&self) -> Result<std::sync::Arc<T>, Error> {
+        self.shared_value(self.one_from::<T>(&self.ordered, "single", None)?)
+    }
+
     pub fn entry<T: Any + Send + Sync>(&self) -> Result<&T, Error> {
         self.value(self.one_from::<T>(&self.entry, "entry", None)?)
     }

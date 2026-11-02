@@ -61,7 +61,12 @@ struct Task {
 }
 impl NodeInstance<Empty> for Task {
     type Output = ();
-    async fn run(&self, _: &Input, _: NodeContext<Empty>) -> Result<Outcome<Empty, ()>, Error> {
+    async fn run(
+        &self,
+        _: &Input,
+        _: NodeContext<Empty>,
+        _scheduler: Arc<dyn Scheduler>,
+    ) -> Result<Outcome<Empty, ()>, Error> {
         assert!(!self.panic, "private node panic");
         Ok(Outcome {
             value: Some(Arc::new(())),
@@ -79,8 +84,8 @@ fn input() -> GraphInput {
 fn context(id: &str) -> RunContext<()> {
     RunContext::root(id.into(), 2, Arc::new(()))
 }
-fn local() -> LocalScheduler {
-    LocalScheduler::new(SchedulerConfig::new(1, 2).unwrap())
+fn local() -> Arc<dyn Scheduler> {
+    Arc::new(LocalScheduler::new(SchedulerConfig::new(1, 2).unwrap()))
 }
 fn events(recorder: &Recorder, id: &str) -> Vec<(tracing::Level, String)> {
     recorder
@@ -112,34 +117,34 @@ fn lifecycle_covers_initialization_and_distinguishes_unpolled_cancel_and_expecte
             .unwrap();
         rt.block_on(async {
             let local = local(); let graph = graph(false);
-            drop(local.run(&graph, input(), context("unpolled")));
-            let run = local.run(&graph, input(), context("completed")).await.unwrap();
+            drop(local.clone().run(&graph, input(), context("unpolled")));
+            let run = local.clone().run(&graph, input(), context("completed")).await.unwrap();
             run.into_result().unwrap();
-            let failure = local.run(&graph, GraphInput::new(HashMap::new()), context("input-error")).await;
+            let failure = local.clone().run(&graph, GraphInput::new(HashMap::new()), context("input-error")).await;
             assert!(failure.is_err()); drop(failure);
             let started = Arc::new(tokio::sync::Notify::new());
             let notified = started.clone();
             let pending = Graph::<Empty, ()>::build_with_initializer(vec![Node::new(NodeId::new("entry"), Task { panic: false })], vec![], vec![], NodeId::new("entry"), move |_, _| {
                 let notified = notified.clone(); async move { notified.notify_one(); std::future::pending::<Result<Empty, Error>>().await }
             }).unwrap();
-            let mut future = Box::pin(local.run(&pending, input(), context("cancelled")));
+            let mut future = Box::pin(local.clone().run(&pending, input(), context("cancelled")));
             tokio::select! { biased; _ = &mut future => panic!("unexpected completion"), _ = started.notified() => {} }
             drop(future);
             let failure = Graph::<Empty, ()>::build_with_initializer(vec![Node::new(NodeId::new("entry"), Task { panic: true })], vec![], vec![], NodeId::new("entry"), |_, _| async { Err(Error::execution(std::io::Error::other("secret-source"))) }).unwrap();
-            assert!(local.run(&failure, input(), context("init-error")).await.is_err());
+            assert!(local.clone().run(&failure, input(), context("init-error")).await.is_err());
             let start = Arc::new(tokio::sync::Notify::new()); let release = Arc::new(tokio::sync::Notify::new());
             let (notify, proceed) = (start.clone(), release.clone());
             let delayed = Graph::<Empty, ()>::build_with_initializer(vec![Node::new(NodeId::new("entry"), Task { panic: false })], vec![], vec![], NodeId::new("entry"), move |_, _| {
                 let (notify, proceed) = (notify.clone(), proceed.clone()); async move { notify.notify_one(); proceed.notified().await; Ok(Empty {}) }
             }).unwrap();
-            let mut future = Box::pin(local.run(&delayed, input(), context("delayed")));
+            let mut future = Box::pin(local.clone().run(&delayed, input(), context("delayed")));
             tokio::select! { biased; _ = &mut future => panic!("unexpected completion"), _ = start.notified() => {} }
             // Timing is measured only after initialization has definitely started.
             std::thread::sleep(Duration::from_millis(10)); release.notify_one(); future.await.unwrap().into_result().unwrap();
             let unsafe_id = format!("control\n{}", "x".repeat(400));
-            local.run(&graph, input(), context(&unsafe_id)).await.unwrap().into_result().unwrap();
+            local.clone().run(&graph, input(), context(&unsafe_id)).await.unwrap().into_result().unwrap();
             let parent = RunContext::root("limit".into(), 0, Arc::new(()));
-            assert!(local.call(&graph, input(), &parent, &NodeKey::Instance { template: NodeId::new("worker\n"), key: "x\r".into() }).await.is_err());
+            assert!(graph.run(&Input::new(vec![Arc::new(input())]), NodeContext { state: Arc::new(Empty {}), run: parent, key: NodeKey::Instance { template: NodeId::new("worker\n"), key: "x\r".into() } }, local.clone()).await.is_err());
         });
     });
     assert!(events(&recorder, "unpolled").is_empty());
@@ -198,22 +203,11 @@ fn events_from_records(
         .collect()
 }
 
-struct Nested {
-    child: Graph<Empty, ()>,
-}
-impl NodeInstance<Empty> for Nested {
-    type Output = ();
-    async fn run(&self, _: &Input, ctx: NodeContext<Empty>) -> Result<Outcome<Empty, ()>, Error> {
-        Ok(Outcome {
-            value: Some(
-                local()
-                    .call(&self.child, input(), &ctx.run, &ctx.key)
-                    .await?,
-            ),
-            state_delta: Default::default(),
-            directive: None,
-        })
-    }
+fn nested_input() -> GraphInput {
+    GraphInput::new(HashMap::from([(
+        NodeId::new("entry"),
+        Input::new(vec![Arc::new(input())]),
+    )]))
 }
 fn panic_initializer() -> Graph<Empty, ()> {
     Graph::build_with_initializer(
@@ -245,8 +239,8 @@ fn panic_unwind_is_not_cancel_and_task_panics_fail_only_the_containing_run() {
             let failed = local().run(&graph(true), input(), context("node-panic")).await.unwrap();
             assert!(matches!(failed.errors(), [RunError::Node { source: Error::Node(NodeError::Task(source)), .. }] if source.downcast_ref::<tokio::task::JoinError>().is_some()));
             drop(failed);
-            let parent = Graph::<Empty, ()>::build(vec![Node::new(NodeId::new("entry"), Nested { child: panic_initializer() })], vec![], vec![], NodeId::new("entry")).unwrap();
-            let failed = local().run(&parent, input(), context("parent")).await.unwrap();
+            let parent = Graph::<Empty, ()>::build(vec![Node::new(NodeId::new("entry"), panic_initializer())], vec![], vec![], NodeId::new("entry")).unwrap();
+            let failed = local().run(&parent, nested_input(), context("parent")).await.unwrap();
             assert!(matches!(failed.into_result(), Err(Error::Call(CallError::Execution { .. }))));
         });
         },
@@ -325,7 +319,7 @@ fn scoped_subscriber_follows_child_runs_on_worker_threads() {
         let recorder = Recorder::default();
         let subscriber = tracing_subscriber::registry().with(recorder.clone());
         let parent = Graph::<Empty, ()>::build(
-            vec![Node::new(NodeId::new("entry"), Nested { child })],
+            vec![Node::new(NodeId::new("entry"), child)],
             vec![],
             vec![],
             NodeId::new("entry"),
@@ -334,7 +328,7 @@ fn scoped_subscriber_follows_child_runs_on_worker_threads() {
         let result = runtime
             .block_on(
                 local()
-                    .run(&parent, input(), context(id))
+                    .run(&parent, nested_input(), context(id))
                     .with_subscriber(subscriber),
             )
             .unwrap()
@@ -398,6 +392,7 @@ fn dropping_a_scoped_run_outside_poll_keeps_its_subscriber() {
     let local = local();
     let mut future = Box::pin(
         local
+            .clone()
             .run(&graph, input(), context("scoped-cancel"))
             .with_subscriber(subscriber),
     );
@@ -419,4 +414,110 @@ fn dropping_a_scoped_run_outside_poll_keeps_its_subscriber() {
             (tracing::Level::DEBUG, "run_cancelled".into()),
         ]
     );
+}
+
+#[test]
+fn dropping_a_five_level_run_cancels_every_started_run_and_releases_execution_handles() {
+    let recorder = Recorder::default();
+    let subscriber = tracing_subscriber::registry().with(recorder.clone());
+    tracing::subscriber::with_default(subscriber, || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            let started = Arc::new(tokio::sync::Notify::new());
+            let notify = started.clone();
+            let mut graph = Graph::<Empty, ()>::build_with_initializer(
+                vec![Node::new(NodeId::new("entry"), Task { panic: false })], vec![], vec![], NodeId::new("entry"),
+                move |_, _| { let notify = notify.clone(); async move { notify.notify_one(); std::future::pending().await } },
+            ).unwrap();
+            let mut graph_input = input();
+            for _ in 0..4 {
+                graph = Graph::build(vec![Node::new(NodeId::new("entry"), graph)], vec![], vec![], NodeId::new("entry")).unwrap();
+                graph_input = GraphInput::new(HashMap::from([(NodeId::new("entry"), Input::new(vec![Arc::new(graph_input)]))]));
+            }
+            let scheduler = local();
+            let weak_scheduler = Arc::downgrade(&scheduler);
+            let resources = Arc::new(());
+            let weak_resources = Arc::downgrade(&resources);
+            let mut future = Box::pin(scheduler.run(&graph, graph_input, RunContext::root("cancel-tree".into(), 4, resources)));
+            tokio::select! { biased; _ = &mut future => panic!("pending leaf completed"), _ = started.notified() => {} }
+            drop(future);
+            // JoinSet cancellation is polled by the executor, including descendant JoinSets.
+            for _ in 0..100 {
+                if weak_scheduler.upgrade().is_none() && weak_resources.upgrade().is_none() { break; }
+                tokio::task::yield_now().await;
+            }
+            assert!(weak_scheduler.upgrade().is_none());
+            assert!(weak_resources.upgrade().is_none());
+        });
+    });
+    let recorded = recorder.0.lock().unwrap();
+    let mut runs: HashMap<&str, Vec<&str>> = HashMap::new();
+    for (level, fields) in recorded.iter() {
+        assert_eq!(*level, tracing::Level::DEBUG);
+        runs.entry(&fields["run_id"])
+            .or_default()
+            .push(&fields["event"]);
+    }
+    assert_eq!(runs.len(), 5);
+    for events in runs.values() {
+        assert_eq!(events, &["run_started", "run_cancelled"]);
+    }
+}
+
+#[test]
+fn saturated_observation_sink_does_not_change_nested_results() {
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        mpsc,
+    };
+    struct BoundedSink {
+        sender: mpsc::SyncSender<()>,
+        dropped: Arc<AtomicUsize>,
+    }
+    impl<S: Subscriber> Layer<S> for BoundedSink {
+        fn on_event(&self, _: &tracing::Event<'_>, _: Context<'_, S>) {
+            if self.sender.try_send(()).is_err() {
+                self.dropped.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+    }
+    let (sender, _receiver) = mpsc::sync_channel(1);
+    sender.send(()).unwrap();
+    let dropped = Arc::new(AtomicUsize::new(0));
+    let subscriber = tracing_subscriber::registry().with(BoundedSink {
+        sender,
+        dropped: dropped.clone(),
+    });
+    tracing::subscriber::with_default(subscriber, || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            for panic in [false, true] {
+                let parent = Graph::<Empty, ()>::build(
+                    vec![Node::new(NodeId::new("entry"), graph(panic))],
+                    vec![],
+                    vec![],
+                    NodeId::new("entry"),
+                )
+                .unwrap();
+                let run = local()
+                    .run(&parent, nested_input(), context("backpressure"))
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    run.status(),
+                    if panic {
+                        RunStatus::Failed
+                    } else {
+                        RunStatus::Completed
+                    }
+                );
+                assert_eq!(run.into_result().is_err(), panic);
+            }
+        });
+    });
+    assert_eq!(dropped.load(Ordering::SeqCst), 8); // One start and one terminal event per Run.
 }

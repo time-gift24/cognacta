@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
-use crate::{Input, NodeId, NodeKey, RunError, SharedValue, State};
+use crate::{Graph, Input, NodeId, NodeKey, RunContext, RunError, SharedValue, State};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NodeStatus {
@@ -23,8 +23,8 @@ pub enum RunStatus {
 pub struct NodeRun {
     pub(crate) input: Option<Arc<Input>>,
     pub(crate) output: Option<SharedValue>,
-    pub(crate) status: NodeStatus,
-    pub(crate) attempts: u32,
+    status: NodeStatus,
+    attempts: u32,
 }
 
 impl NodeRun {
@@ -35,6 +35,32 @@ impl NodeRun {
             status: NodeStatus::Pending,
             attempts: 0,
         }
+    }
+
+    pub(crate) fn start(&mut self, input: Arc<Input>) {
+        self.input = Some(input);
+        self.status = NodeStatus::Running;
+        self.attempts += 1;
+    }
+
+    pub(crate) fn complete(&mut self, output: Option<SharedValue>) {
+        self.output = output;
+        self.status = NodeStatus::Completed;
+    }
+
+    pub(crate) fn fail(&mut self) {
+        self.output = None;
+        self.status = NodeStatus::Failed;
+    }
+
+    pub(crate) fn skip(&mut self) {
+        self.status = NodeStatus::Skipped;
+    }
+
+    pub(crate) fn rearm(&mut self) {
+        self.input = None;
+        self.output = None;
+        self.status = NodeStatus::Pending;
     }
 
     pub fn input(&self) -> Option<&Input> {
@@ -58,7 +84,7 @@ impl NodeRun {
 /// Completed initialization and retained execution diagnostics, without scheduler resources.
 pub struct Run<S: State, O> {
     pub(crate) state: Arc<S>,
-    pub(crate) status: RunStatus,
+    status: RunStatus,
     pub(crate) nodes: HashMap<NodeKey, NodeRun>,
     pub(crate) instances: HashMap<NodeId, Vec<NodeKey>>,
     pub(crate) errors: Vec<RunError>,
@@ -72,6 +98,65 @@ pub struct Run<S: State, O> {
 }
 
 impl<S: State, O: Send + Sync + 'static> Run<S, O> {
+    pub(crate) fn new<R: Send + Sync + 'static>(
+        graph: &Graph<S, O, R>,
+        context: &RunContext<R>,
+        state: S,
+    ) -> Self {
+        Self {
+            state: Arc::new(state),
+            status: RunStatus::Running,
+            nodes: graph
+                .nodes
+                .iter()
+                .filter(|node| !node.template)
+                .map(|node| (NodeKey::Static(node.id.clone()), NodeRun::pending()))
+                .collect(),
+            instances: HashMap::new(),
+            errors: Vec::new(),
+            final_output: None,
+            waves: 0,
+            run_id: context.run_id().to_owned(),
+            parent_run_id: context.parent_run_id().map(str::to_owned),
+            parent_node: context.parent_node().cloned(),
+            depth: context.depth(),
+            max_depth: context.max_depth(),
+        }
+    }
+
+    pub(crate) fn finish(&mut self, return_node: &NodeId) {
+        if self.errors.is_empty() {
+            let terminal = self.nodes.values().all(|node| {
+                matches!(
+                    node.status(),
+                    NodeStatus::Completed | NodeStatus::Skipped | NodeStatus::Failed
+                )
+            });
+            if !terminal {
+                self.errors.push(RunError::Stalled);
+            } else {
+                self.final_output = self.nodes[&NodeKey::Static(return_node.clone())]
+                    .output
+                    .clone()
+                    .map(|value| {
+                        value
+                            .downcast::<O>()
+                            .expect("return type validated at construction")
+                    });
+                if self.final_output.is_none() {
+                    self.errors.push(RunError::MissingOutput {
+                        node: return_node.clone(),
+                    });
+                }
+            }
+        }
+        self.status = if self.errors.is_empty() {
+            RunStatus::Completed
+        } else {
+            RunStatus::Failed
+        };
+    }
+
     pub fn state(&self) -> &S {
         &self.state
     }
@@ -145,7 +230,12 @@ mod tests {
     struct Fail(&'static str);
     impl NodeInstance<Empty> for Fail {
         type Output = ();
-        async fn run(&self, _: &Input, _: NodeContext<Empty>) -> Result<Outcome<Empty, ()>, Error> {
+        async fn run(
+            &self,
+            _: &Input,
+            _: NodeContext<Empty>,
+            _scheduler: Arc<dyn Scheduler>,
+        ) -> Result<Outcome<Empty, ()>, Error> {
             Err(Error::execution(std::io::Error::other(self.0)))
         }
     }
@@ -168,7 +258,8 @@ mod tests {
                 .map(|id| (NodeId::new(id), Input::new(vec![])))
                 .collect(),
         );
-        let run = LocalScheduler::new(SchedulerConfig::new(2, 1).unwrap())
+        let run = (Arc::new(LocalScheduler::new(SchedulerConfig::new(2, 1).unwrap()))
+            as Arc<dyn Scheduler>)
             .run(
                 &graph,
                 input,

@@ -1,196 +1,117 @@
-use super::SchedulerConfig;
+use super::{Execution, Scheduler, SchedulerConfig};
 use crate::{
-    Directive, DirectiveError, Error, Graph, GraphInput, Input, Join, NodeError, NodeId, NodeKey,
-    NodeRun, NodeStatus, Origin, Run, RunContext, RunError, RunStatus, SharedValue, State,
+    Directive, DirectiveError, Error, Graph, GraphInput, Input, Join, NodeId, NodeKey, NodeRun,
+    NodeStatus, Origin, Run, RunContext, RunError, SharedValue, State, graph::ErasedOutcome,
     input::InputBuilder,
 };
 use std::{
     collections::{HashMap, HashSet},
-    sync::Arc,
+    future::Future,
+    pin::Pin,
+    sync::{Arc, Mutex},
 };
-use tokio::task::{Id, JoinSet};
 use tracing::{Instrument, instrument::WithSubscriber};
+
+#[derive(Debug, thiserror::Error)]
+#[error("{0}")]
+struct ProtocolError(&'static str);
+
+fn protocol_error(message: &'static str) -> Error {
+    Error::scheduling(ProtocolError(message))
+}
+
 struct TransitionPlan {
     writer: NodeKey,
     payload: Option<SharedValue>,
     immediate: bool,
 }
 
-pub(super) struct Execution<'a, S: State, O, R> {
+struct Slot<S: State> {
+    key: NodeKey,
+    output: Arc<Mutex<Option<ErasedOutcome<S>>>>,
+    result: Option<Result<ErasedOutcome<S>, Error>>,
+}
+
+pub(super) struct RunExecution<'a, S: State, O, R> {
     graph: &'a Graph<S, O, R>,
     run: Run<S, O>,
     input: Arc<GraphInput>,
     context: RunContext<R>,
+    scheduler: Arc<dyn Scheduler>,
     config: SchedulerConfig,
+    wave: Vec<Slot<S>>,
+    finished: bool,
     transitions: HashMap<NodeId, TransitionPlan>,
     instance_inputs: HashMap<NodeKey, (NodeKey, SharedValue)>,
     instance_order: Vec<NodeKey>,
 }
-impl<'a, S: State, O: Send + Sync + 'static, R: Send + Sync + 'static> Execution<'a, S, O, R> {
+
+impl<'a, S: State, O: Send + Sync + 'static, R: Send + Sync + 'static> RunExecution<'a, S, O, R> {
     pub(super) fn new(
         graph: &'a Graph<S, O, R>,
         input: Arc<GraphInput>,
         context: RunContext<R>,
-        config: SchedulerConfig,
+        scheduler: Arc<dyn Scheduler>,
         state: S,
     ) -> Self {
-        let run = Run {
-            state: Arc::new(state),
-            status: RunStatus::Running,
-            nodes: graph
-                .nodes
-                .iter()
-                .filter(|node| !node.template)
-                .map(|node| (NodeKey::Static(node.id.clone()), NodeRun::pending()))
-                .collect(),
-            instances: HashMap::new(),
-            errors: Vec::new(),
-            final_output: None,
-            waves: 0,
-            run_id: context.run_id().to_owned(),
-            parent_run_id: context.parent_run_id().map(str::to_owned),
-            parent_node: context.parent_node().cloned(),
-            depth: context.depth(),
-            max_depth: context.max_depth(),
-        };
         Self {
             graph,
-            run,
+            run: Run::new(graph, &context, state),
             input,
             context,
-            config,
+            config: scheduler.config(),
+            scheduler,
+            wave: Vec::new(),
+            finished: false,
             transitions: HashMap::new(),
             instance_inputs: HashMap::new(),
             instance_order: Vec::new(),
         }
     }
-    pub(super) async fn execute(mut self) -> Run<S, O> {
-        loop {
-            let mut ready = self.ready(false);
-            if ready.is_empty() {
-                let skipped = self.sweep();
-                if !skipped.is_empty() {
-                    for key in skipped {
-                        if let Some(node) = self.run.nodes.get_mut(&key) {
-                            node.status = NodeStatus::Skipped;
-                        }
-                    }
-                    continue;
-                }
-                ready = self.ready(true);
-            }
-            if ready.is_empty() {
-                let complete = self.run.nodes.values().all(|node| {
-                    matches!(
-                        node.status,
-                        NodeStatus::Completed | NodeStatus::Skipped | NodeStatus::Failed
-                    )
-                });
-                if complete {
-                    self.run.status = RunStatus::Completed;
-                    let key = NodeKey::Static(self.graph.return_node.clone());
-                    self.run.final_output = self.run.nodes[&key].output.clone().map(|value| {
-                        value
-                            .downcast::<O>()
-                            .expect("return type validated at construction")
-                    });
-                    if self.run.final_output.is_none() {
-                        self.run.status = RunStatus::Failed;
-                        self.run.errors.push(RunError::MissingOutput {
-                            node: self.graph.return_node.clone(),
-                        });
-                    }
-                } else {
-                    self.run.status = RunStatus::Failed;
-                    self.run.errors.push(RunError::Stalled);
-                }
-                break;
-            }
-            if self.run.waves >= self.config.max_waves {
-                self.run.status = RunStatus::Failed;
-                self.run.errors.push(RunError::MaxWaves);
-                break;
-            }
-            self.run.waves += 1;
-            self.execute_wave(ready).await;
-            if self.run.status == RunStatus::Failed {
-                break;
-            }
+
+    pub(super) fn finish(mut self, result: Result<(), Error>) -> Run<S, O> {
+        let failure = result.err().or_else(|| {
+            (!self.finished)
+                .then(|| protocol_error("drive returned before advance reached the end"))
+        });
+        self.settle_wave(failure.is_some());
+        if let Some(source) = failure {
+            self.run.errors.push(RunError::Scheduling { source });
         }
+        self.run.finish(&self.graph.return_node);
         self.run
     }
-    async fn execute_wave(&mut self, ready: Vec<NodeKey>) {
-        let state = self.run.state.clone();
-        let mut tasks = JoinSet::new();
-        let mut task_slots = HashMap::<Id, usize>::new();
-        let mut results = (0..ready.len()).map(|_| None).collect::<Vec<_>>();
-        let mut next = 0;
-        while next < ready.len() || !tasks.is_empty() {
-            while next < ready.len() && tasks.len() < self.config.max_concurrency.get() {
-                let key = ready[next].clone();
-                let input = Arc::new(self.assemble_input(&key));
-                if let NodeKey::Static(id) = &key {
-                    self.transitions.remove(id);
-                }
-                let node = self
-                    .run
-                    .nodes
-                    .get_mut(&key)
-                    .expect("ready node has a run record");
-                node.input = Some(input.clone());
-                node.status = NodeStatus::Running;
-                node.attempts += 1;
-                let instance = self.graph.key_node(&key).instance.clone();
-                let ctx = crate::NodeContext {
-                    state: state.clone(),
-                    run: self.context.clone(),
-                    key: key.clone(),
-                };
-                let handle = tasks.spawn(
-                    async move {
-                        let result = instance.run(&input, ctx).await;
-                        (next, result)
-                    }
-                    .in_current_span()
-                    .with_current_subscriber(),
-                );
-                task_slots.insert(handle.id(), next);
-                next += 1;
-            }
-            if let Some(joined) = tasks.join_next().await {
-                match joined {
-                    Ok((slot, result)) => {
-                        results[slot] = Some(result);
-                    }
-                    Err(error) => {
-                        let slot = task_slots[&error.id()];
-                        results[slot] = Some(Err(Error::Node(NodeError::Task(Box::new(error)))));
-                    }
-                }
-            }
-        }
-        drop(state);
 
+    fn settle_wave(&mut self, prevent_routing: bool) {
+        if self.wave.is_empty() {
+            return;
+        }
         let mut deltas = Vec::new();
         let mut directives = Vec::new();
-        for (key, result) in ready.iter().zip(results) {
+        for slot in std::mem::take(&mut self.wave) {
+            let key = &slot.key;
+            let result = slot.result;
             let node = self
                 .run
                 .nodes
                 .get_mut(key)
                 .expect("settled node has a run record");
-            match result.expect("every task has a settled result") {
+            let Some(result) = result else {
+                if node.status() == NodeStatus::Running {
+                    node.fail();
+                }
+                continue;
+            };
+            match result {
                 Ok(outcome) => {
-                    node.status = NodeStatus::Completed;
-                    node.output = outcome.value;
+                    node.complete(outcome.value);
                     deltas.push(outcome.state_delta);
                     if let Some(directive) = outcome.directive {
                         directives.push((key.clone(), directive));
                     }
                 }
                 Err(error) => {
-                    node.status = NodeStatus::Failed;
-                    node.output = None;
+                    node.fail();
                     self.run.errors.push(RunError::Node {
                         key: key.clone(),
                         source: error,
@@ -271,8 +192,7 @@ impl<'a, S: State, O: Send + Sync + 'static, R: Send + Sync + 'static> Execution
                 }
             }
         }
-        if !self.run.errors.is_empty() {
-            self.run.status = RunStatus::Failed;
+        if prevent_routing || !self.run.errors.is_empty() {
             return;
         }
 
@@ -289,9 +209,7 @@ impl<'a, S: State, O: Send + Sync + 'static, R: Send + Sync + 'static> Execution
                         .nodes
                         .get_mut(&key)
                         .expect("transition target has a run record");
-                    node.status = NodeStatus::Pending;
-                    node.input = None;
-                    node.output = None;
+                    node.rearm();
                     self.transitions.insert(
                         target,
                         TransitionPlan {
@@ -328,7 +246,7 @@ impl<'a, S: State, O: Send + Sync + 'static, R: Send + Sync + 'static> Execution
                 continue;
             }
             let key = NodeKey::Static(node.id.clone());
-            if self.run.nodes[&key].status != NodeStatus::Pending {
+            if self.run.nodes[&key].status() != NodeStatus::Pending {
                 continue;
             }
             if self.graph.entries.contains(&node.id)
@@ -376,7 +294,7 @@ impl<'a, S: State, O: Send + Sync + 'static, R: Send + Sync + 'static> Execution
             }
         }
         for key in &self.instance_order {
-            if self.run.nodes[key].status == NodeStatus::Pending {
+            if self.run.nodes[key].status() == NodeStatus::Pending {
                 ready.push(key.clone());
             }
         }
@@ -391,7 +309,7 @@ impl<'a, S: State, O: Send + Sync + 'static, R: Send + Sync + 'static> Execution
                 let key = NodeKey::Static(node.id.clone());
                 if node.template
                     || self.graph.entries.contains(&node.id)
-                    || self.run.nodes[&key].status != NodeStatus::Pending
+                    || self.run.nodes[&key].status() != NodeStatus::Pending
                 {
                     return false;
                 }
@@ -427,13 +345,13 @@ impl<'a, S: State, O: Send + Sync + 'static, R: Send + Sync + 'static> Execution
             }
             instances.iter().all(|key| {
                 matches!(
-                    self.run.nodes[key].status,
+                    self.run.nodes[key].status(),
                     NodeStatus::Completed | NodeStatus::Skipped | NodeStatus::Failed
                 )
             })
         } else {
             matches!(
-                self.run.nodes[&NodeKey::Static(source.clone())].status,
+                self.run.nodes[&NodeKey::Static(source.clone())].status(),
                 NodeStatus::Completed | NodeStatus::Skipped | NodeStatus::Failed
             )
         }
@@ -441,7 +359,7 @@ impl<'a, S: State, O: Send + Sync + 'static, R: Send + Sync + 'static> Execution
     fn predecessor_done(&self, source: &NodeId, empty_fanout: bool) -> bool {
         let key = NodeKey::Static(source.clone());
         if let Some(node) = self.run.nodes.get(&key) {
-            return node.status == NodeStatus::Completed;
+            return node.status() == NodeStatus::Completed;
         }
         let instances = self.run.instances(source);
         if instances.is_empty() {
@@ -449,7 +367,7 @@ impl<'a, S: State, O: Send + Sync + 'static, R: Send + Sync + 'static> Execution
         } else {
             instances
                 .iter()
-                .all(|key| self.run.nodes[key].status == NodeStatus::Completed)
+                .all(|key| self.run.nodes[key].status() == NodeStatus::Completed)
         }
     }
     fn assemble_input(&self, key: &NodeKey) -> Input {
@@ -484,7 +402,7 @@ impl<'a, S: State, O: Send + Sync + 'static, R: Send + Sync + 'static> Execution
             if source.template {
                 for instance in self.run.instances(&source.id) {
                     let node = &self.run.nodes[instance];
-                    if node.status == NodeStatus::Completed
+                    if node.status() == NodeStatus::Completed
                         && let Some(output) = &node.output
                     {
                         input.push(Origin::Node(instance.clone()), output.clone());
@@ -493,7 +411,7 @@ impl<'a, S: State, O: Send + Sync + 'static, R: Send + Sync + 'static> Execution
             } else {
                 let source_key = NodeKey::Static(source.id.clone());
                 let node = &self.run.nodes[&source_key];
-                if node.status == NodeStatus::Completed
+                if node.status() == NodeStatus::Completed
                     && let Some(output) = &node.output
                 {
                     input.push(Origin::Node(source_key), output.clone());
@@ -501,5 +419,121 @@ impl<'a, S: State, O: Send + Sync + 'static, R: Send + Sync + 'static> Execution
             }
         }
         input.freeze()
+    }
+}
+
+impl<S: State, O: Send + Sync + 'static, R: Send + Sync + 'static> Execution
+    for RunExecution<'_, S, O, R>
+{
+    fn advance(&mut self) -> Result<Option<Vec<NodeKey>>, Error> {
+        if self.wave.iter().any(|slot| slot.result.is_none()) {
+            return Err(protocol_error("advance called before the wave completed"));
+        }
+        self.settle_wave(false);
+        if self.finished || !self.run.errors.is_empty() {
+            self.finished = true;
+            return Ok(None);
+        }
+        loop {
+            let mut ready = self.ready(false);
+            if ready.is_empty() {
+                let skipped = self.sweep();
+                if !skipped.is_empty() {
+                    for key in skipped {
+                        self.run
+                            .nodes
+                            .get_mut(&key)
+                            .expect("sweep candidate exists")
+                            .skip();
+                    }
+                    continue;
+                }
+                ready = self.ready(true);
+            }
+            if ready.is_empty() {
+                self.finished = true;
+                return Ok(None);
+            }
+            if self.run.waves >= self.config.max_waves() {
+                self.run.errors.push(RunError::MaxWaves);
+                self.finished = true;
+                return Ok(None);
+            }
+            self.run.waves += 1;
+            self.wave = ready
+                .iter()
+                .map(|key| Slot {
+                    key: key.clone(),
+                    output: Arc::new(Mutex::new(None)),
+                    result: None,
+                })
+                .collect();
+            return Ok(Some(ready));
+        }
+    }
+
+    fn dispatch(
+        &mut self,
+        key: &NodeKey,
+    ) -> Result<Pin<Box<dyn Future<Output = Result<(), Error>> + Send + 'static>>, Error> {
+        let slot = self
+            .wave
+            .iter()
+            .find(|slot| &slot.key == key)
+            .ok_or_else(|| protocol_error("dispatch key is not in the current wave"))?;
+        if self.run.nodes[key].status() != NodeStatus::Pending {
+            return Err(protocol_error(
+                "dispatch called more than once for a wave member",
+            ));
+        }
+        let output = slot.output.clone();
+        let input = Arc::new(self.assemble_input(key));
+        if let NodeKey::Static(id) = key {
+            self.transitions.remove(id);
+        }
+        self.run
+            .nodes
+            .get_mut(key)
+            .expect("wave member exists")
+            .start(input.clone());
+        let instance = self.graph.key_node(key).instance.clone();
+        let ctx = crate::NodeContext {
+            state: self.run.state.clone(),
+            run: self.context.clone(),
+            key: key.clone(),
+        };
+        let scheduler = self.scheduler.clone();
+        Ok(Box::pin(
+            async move {
+                let outcome = instance.run(&input, ctx, scheduler).await?;
+                *output.lock().expect("outcome slot contains no user code") = Some(outcome);
+                Ok(())
+            }
+            .in_current_span()
+            .with_current_subscriber(),
+        ))
+    }
+
+    fn complete(&mut self, key: NodeKey, result: Result<(), Error>) -> Result<(), Error> {
+        let slot = self
+            .wave
+            .iter_mut()
+            .find(|slot| slot.key == key)
+            .ok_or_else(|| protocol_error("complete key is not in the current wave"))?;
+        if self.run.nodes[&key].status() != NodeStatus::Running || slot.result.is_some() {
+            return Err(protocol_error(
+                "complete requires one dispatched, unreported task",
+            ));
+        }
+        slot.result = Some(match result {
+            Ok(()) => Ok(slot
+                .output
+                .lock()
+                .expect("outcome slot contains no user code")
+                .take()
+                .ok_or_else(|| protocol_error("complete reported success without an outcome"))?),
+            Err(error) => Err(error),
+        });
+        Ok(())
     }
 }

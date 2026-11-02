@@ -1,10 +1,8 @@
-use super::{execution::Execution, observation::Observation};
-use crate::{
-    CallError, ConfigError, Error, Graph, GraphInput, InputError, Run, RunContext, RunStatus, State,
-};
+use super::{Execution, Scheduler};
+use crate::{ConfigError, Error, NodeError, NodeKey};
 use bon::bon;
-use std::{num::NonZeroUsize, sync::Arc};
-use tracing::Instrument;
+use std::{collections::HashMap, future::Future, num::NonZeroUsize, pin::Pin, sync::Arc};
+use tokio::task::{Id, JoinSet};
 #[derive(Clone, Copy, Debug)]
 pub struct SchedulerConfig {
     pub(super) max_concurrency: NonZeroUsize,
@@ -37,84 +35,66 @@ impl SchedulerConfig {
     }
 }
 
-/// Local execution with independent concurrency slots for each invocation.
+/// Local task scheduling with an independent concurrency pool per Run.
 pub struct LocalScheduler {
     config: SchedulerConfig,
 }
 
-#[bon]
 impl LocalScheduler {
     pub fn new(config: SchedulerConfig) -> Self {
         Self { config }
     }
+}
 
-    /// Executes validation, initialization and all waves before returning diagnostics.
-    /// Startup errors return `Error::Call`; execution errors remain in the returned Run.
-    /// Observations use the host subscriber and never include business data or error sources.
-    #[builder(start_fn = run_builder, finish_fn = call, builder_type = SchedulerRunBuilder, state_mod(vis = "pub"))]
-    pub async fn run<S, O, R>(
-        &self,
-        graph: &Graph<S, O, R>,
-        input: GraphInput,
-        context: RunContext<R>,
-    ) -> Result<Run<S, O>, Error>
-    where
-        S: State,
-        O: Send + Sync + 'static,
-        R: Send + Sync + 'static,
-    {
-        let mut observation = Observation::new(&context);
-        let span = observation.span.clone();
-        async move {
-            let mut missing = graph
-                .entries
-                .iter()
-                .filter(|id| !input.entries.contains_key(*id))
-                .cloned()
-                .collect::<Vec<_>>();
-            let mut unexpected = input
-                .entries
-                .keys()
-                .filter(|id| !graph.entries.contains(*id))
-                .cloned()
-                .collect::<Vec<_>>();
-            if !missing.is_empty() || !unexpected.is_empty() {
-                missing.sort();
-                unexpected.sort();
-                observation.finish("input", Some("input"));
-                return Err(CallError::Input {
-                    source: Box::new(InputError::EntrySetMismatch {
-                        missing,
-                        unexpected,
-                    }),
-                }
-                .into());
-            }
-            let input = Arc::new(input);
-            let state = match (graph.initializer)(input.clone(), context.clone()).await {
-                Ok(state) => state,
-                Err(source) => {
-                    observation.finish("initialization", Some("initialization"));
-                    return Err(CallError::Initialization {
-                        source: Box::new(source),
+impl Scheduler for LocalScheduler {
+    fn config(&self) -> SchedulerConfig {
+        self.config
+    }
+
+    fn drive<'a>(
+        self: Arc<Self>,
+        execution: &'a mut (dyn Execution + 'a),
+    ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send + 'a>> {
+        Box::pin(async move {
+            while let Some(ready) = execution.advance()? {
+                let mut tasks = JoinSet::new();
+                let mut keys = HashMap::<Id, NodeKey>::new();
+                let mut next = 0;
+                let mut failure = None;
+                while next < ready.len() || !tasks.is_empty() {
+                    while failure.is_none()
+                        && next < ready.len()
+                        && tasks.len() < self.config.max_concurrency.get()
+                    {
+                        let key = ready[next].clone();
+                        let task = match execution.dispatch(&key) {
+                            Ok(task) => task,
+                            Err(error) => {
+                                failure = Some(error);
+                                break;
+                            }
+                        };
+                        let handle = tasks.spawn(task);
+                        keys.insert(handle.id(), key);
+                        next += 1;
                     }
-                    .into());
+                    let Some(joined) = tasks.join_next_with_id().await else {
+                        break;
+                    };
+                    let (id, result) = match joined {
+                        Ok((id, result)) => (id, result),
+                        Err(error) => (error.id(), Err(NodeError::Task(Box::new(error)).into())),
+                    };
+                    let key = keys.remove(&id).expect("submitted task has a node key");
+                    if let Err(error) = execution.complete(key, result) {
+                        failure.get_or_insert(error);
+                    }
                 }
-            };
-            let run = Execution::new(graph, input, context, self.config, state)
-                .execute()
-                .await;
-            let failure = (run.status() != RunStatus::Completed).then_some(
-                if matches!(run.errors(), [crate::RunError::MissingOutput { .. }]) {
-                    "missing_output"
-                } else {
-                    "execution"
-                },
-            );
-            observation.finish("execution", failure);
-            Ok(run)
-        }
-        .instrument(span)
-        .await
+                if let Some(error) = failure {
+                    return Err(error);
+                }
+            }
+            Ok(())
+        })
     }
 }

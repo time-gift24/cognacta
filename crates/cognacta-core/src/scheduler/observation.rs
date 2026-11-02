@@ -68,6 +68,6 @@ impl Drop for Observation {
     }
 }
 
-pub(super) fn depth_rejected<R: Send + Sync + 'static>(parent: &RunContext<R>, node: &NodeKey) {
+pub(crate) fn depth_rejected<R: Send + Sync + 'static>(parent: &RunContext<R>, node: &NodeKey) {
     tracing::warn!(event = "depth_rejected", run_id = %safe(parent.run_id()), parent_node = %safe(&node.to_string()), depth = parent.depth(), max_depth = parent.max_depth(), error_class = "depth_exceeded", "child depth rejected");
 }

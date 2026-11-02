@@ -232,6 +232,7 @@ fn node_status(status: NodeStatus) -> &'static str {
 pub(super) fn run_error(error: &RunError) -> String {
     match error {
         RunError::Node { key, source } => format!("Node({key},{})", error_kind(source)),
+        RunError::Scheduling { .. } => "Scheduling".into(),
         RunError::Merge(error) => format!("Merge({})", error_kind(error)),
         RunError::InvalidDirective { writer, source } => {
             let kind = match source {
@@ -260,9 +261,12 @@ fn error_kind(error: &Error) -> String {
                 cognacta_core::CallError::MissingOutput => "MissingOutput",
             }
         ),
+        Error::Scheduling { .. } => "Scheduling".into(),
         Error::Graph(_) => "Graph".into(),
         Error::Config(_) => "Config".into(),
         Error::Input(error) => format!("Input({error:?})"),
+        Error::Node(NodeError::UnboundInstance) => "Node(UnboundInstance)".into(),
+        Error::Node(NodeError::DroppedInstance) => "Node(DroppedInstance)".into(),
         Error::Node(NodeError::Execution(_)) => "Node(Execution)".into(),
         Error::Node(NodeError::Task(_)) => "Node(Task)".into(),
         Error::Merge(MergeError::SingleWriterConflicts { fields }) => {
@@ -277,6 +281,7 @@ fn error_kind(error: &Error) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cognacta_core::Scheduler;
     use std::sync::Arc;
 
     #[test]
@@ -307,6 +312,7 @@ mod tests {
             &self,
             input: &Input,
             _: cognacta_core::NodeContext<EmptyState>,
+            _scheduler: Arc<dyn Scheduler>,
         ) -> Result<cognacta_core::Outcome<EmptyState, u32>, Error> {
             Ok(cognacta_core::Outcome {
                 value: Some(Arc::new(*input.entry::<u32>()?)),
@@ -332,7 +338,8 @@ mod tests {
         )
         .unwrap();
         for waves in [0, 1] {
-            let run = LocalScheduler::new(SchedulerConfig::new(1, waves).unwrap())
+            let run = (Arc::new(LocalScheduler::new(SchedulerConfig::new(1, waves).unwrap()))
+                as Arc<dyn Scheduler>)
                 .run(
                     &graph,
                     GraphInput::new(std::collections::HashMap::from([(
