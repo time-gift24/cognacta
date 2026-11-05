@@ -1,0 +1,5 @@
+error: duplicate graph input `entry`
+ --> tests/graph/macro_duplicate_input.rs:6:9
+  |
+6 |         entry: 2_usize,
+  |         ^^^^^

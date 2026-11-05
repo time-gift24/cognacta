@@ -1,0 +1,16 @@
+[package]
+name = "cognacta-eventlog"
+description = "JSONL storage for immutable Cognacta execution events"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+cognacta-core.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+serde.workspace = true

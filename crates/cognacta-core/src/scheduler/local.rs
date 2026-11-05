@@ -56,7 +56,7 @@ impl Scheduler for LocalScheduler {
         execution: &'a mut (dyn Execution + 'a),
     ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send + 'a>> {
         Box::pin(async move {
-            while let Some(ready) = execution.advance()? {
+            while let Some(ready) = execution.advance().await? {
                 let mut tasks = JoinSet::new();
                 let mut keys = HashMap::<Id, NodeKey>::new();
                 let mut next = 0;
@@ -83,10 +83,13 @@ impl Scheduler for LocalScheduler {
                     };
                     let (id, result) = match joined {
                         Ok((id, result)) => (id, result),
+                        Err(error) if error.is_cancelled() => {
+                            (error.id(), Err(Error::scheduling(error)))
+                        }
                         Err(error) => (error.id(), Err(NodeError::Task(Box::new(error)).into())),
                     };
                     let key = keys.remove(&id).expect("submitted task has a node key");
-                    if let Err(error) = execution.complete(key, result) {
+                    if let Err(error) = execution.complete(key, result).await {
                         failure.get_or_insert(error);
                     }
                 }

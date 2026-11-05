@@ -23,6 +23,9 @@ fn key(name: &str) -> NodeKey {
 fn input(name: &str, values: Vec<SharedValue>) -> GraphInput {
     GraphInput::new(HashMap::from([(id(name), Input::new(values))]))
 }
+fn json(value: impl serde::Serialize) -> SharedValue {
+    Arc::new(serde_json::to_value(value).unwrap())
+}
 fn local(k: usize) -> Arc<dyn Scheduler> {
     Arc::new(LocalScheduler::new(SchedulerConfig::new(k, 16).unwrap()))
 }
@@ -51,7 +54,7 @@ impl Scheduler for Reverse {
     ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send + 'a>> {
         Box::pin(async move {
             self.calls.fetch_add(1, Ordering::SeqCst);
-            while let Some(ready) = execution.advance()? {
+            while let Some(ready) = execution.advance().await? {
                 let mut waiting = ready.into_iter().rev();
                 let mut tasks = JoinSet::new();
                 loop {
@@ -64,7 +67,7 @@ impl Scheduler for Reverse {
                         break;
                     };
                     let (key, result) = joined.unwrap();
-                    execution.complete(key, result).unwrap();
+                    execution.complete(key, result).await.unwrap();
                 }
             }
             Ok(())
@@ -86,7 +89,7 @@ impl Reducer<Vec<usize>> for CellAppend {
         Ok(value)
     }
 }
-#[derive(Default, State)]
+#[derive(serde::Serialize, Default, State, serde::Deserialize)]
 struct Wave {
     #[reducer(CellAppend)]
     order: Vec<usize>,
@@ -144,7 +147,8 @@ async fn real_drivers_control_admission_and_refill_but_settle_in_graph_order() {
                 gates: (0..3).map(|_| Semaphore::new(0)).collect(),
                 fail,
             });
-            let (g, r) = (graph.clone(), gates.clone());
+            let log = Arc::new(InMemoryEventLog::new());
+            let (g, r, recording) = (graph.clone(), gates.clone(), log.clone());
             let run = tokio::spawn(async move {
                 scheduler
                     .run(
@@ -154,7 +158,7 @@ async fn real_drivers_control_admission_and_refill_but_settle_in_graph_order() {
                                 .map(|n| (id(&n.to_string()), Input::new(vec![])))
                                 .collect(),
                         ),
-                        RunContext::root("wave".into(), 0, r),
+                        RunContext::root("wave".into(), 0, r).with_event_log(recording),
                     )
                     .await
                     .unwrap()
@@ -187,18 +191,47 @@ async fn real_drivers_control_admission_and_refill_but_settle_in_graph_order() {
                 );
             }
             assert_eq!(run.errors().len(), usize::from(fail));
+            let events = log.events("wave", 0).await.unwrap();
+            assert_eq!(
+                events
+                    .iter()
+                    .map(|event| event.seq().get())
+                    .collect::<Vec<_>>(),
+                (1..=events.len() as u64).collect::<Vec<_>>()
+            );
+            assert_eq!(
+                events
+                    .iter()
+                    .filter(|event| event.kind() == "node_started")
+                    .count(),
+                3
+            );
+            assert_eq!(
+                events
+                    .iter()
+                    .filter(|event| event.kind() == "node_completed")
+                    .count(),
+                if fail { 2 } else { 3 }
+            );
+            assert_eq!(events[events.len() - 2].kind(), "control");
+            assert_eq!(
+                events.last().unwrap().kind(),
+                if fail { "run_failed" } else { "run_completed" }
+            );
         }
     }
 }
 
-#[derive(Default, State)]
+#[derive(serde::Serialize, Default, State, serde::Deserialize)]
 struct Level {
     #[reducer(Override)]
     depth: usize,
     #[reducer(Add)]
     visits: usize,
 }
-struct Token(usize); // No Clone.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Token(usize);
+// No Clone.
 #[derive(Debug)]
 struct Identity {
     run: String,
@@ -227,19 +260,21 @@ impl NodeInstance<Level, Resources> for Prepare {
     ) -> Result<Outcome<Level, GraphInput>, Error> {
         assert_eq!(ctx.state.depth, ctx.run.depth());
         assert_eq!(ctx.state.visits, 0);
-        let token = input.entry_shared::<Token>()?;
-        assert!(Arc::ptr_eq(&token, &ctx.run.resources().token));
-        let value = Arc::new(crate::scheduling::input("prepare", vec![token]));
+        let token: Token = serde_json::from_value(input.entry()?.clone())
+            .map_err(|source| InputError::Decode { source })?;
+        assert_eq!(token.0, ctx.run.resources().token.0);
+        let value = Arc::new(crate::scheduling::input("prepare", vec![json(token)]));
+        let payload = json(value.as_ref());
         let directive = match self.0 {
             Route::Static => None,
             Route::Deliver => Some(Directive::Deliver(vec![DeliverTarget {
                 template: id("worker"),
                 key: "same-key".into(),
-                payload: value.clone(),
+                payload: payload.clone(),
             }])),
             Route::Transition => Some(Directive::Transition {
                 target: id("worker"),
-                payload: Some(value.clone()),
+                payload: Some(payload),
                 immediate: true,
             }),
         };
@@ -263,17 +298,18 @@ impl NodeInstance<Level, Resources> for Leaf {
         _: Arc<dyn Scheduler>,
     ) -> Result<Outcome<Level, Token>, Error> {
         assert_eq!(ctx.state.visits, 1);
-        let value = input
-            .one::<GraphInput>(&id("prepare"))?
-            .entry(&id("prepare"))?
-            .entry_shared::<Token>()?;
+        let graph_input: GraphInput = serde_json::from_value(input.one(&id("prepare"))?.clone())
+            .map_err(|source| InputError::Decode { source })?;
+        let value: Token =
+            serde_json::from_value(graph_input.entry(&id("prepare"))?.entry()?.clone())
+                .map_err(|source| InputError::Decode { source })?;
         if value.0 != 73 {
             return Err(Error::execution(std::io::Error::other(
                 "leaf rejected input",
             )));
         }
         Ok(Outcome {
-            value: Some(value),
+            value: Some(Arc::new(value)),
             state_delta: Default::default(),
             directive: None,
         })
@@ -290,10 +326,11 @@ impl NodeInstance<Level, Resources> for Report {
     ) -> Result<Outcome<Level, Token>, Error> {
         assert_eq!(ctx.state.visits, 1); // Child deltas do not enter the parent state.
         assert_eq!(ctx.state.depth, ctx.run.depth());
-        let value = input.one_shared::<Token>(&id("worker"))?;
-        assert!(Arc::ptr_eq(&value, &ctx.run.resources().token));
+        let value: Token = serde_json::from_value(input.one(&id("worker"))?.clone())
+            .map_err(|source| InputError::Decode { source })?;
+        assert_eq!(value.0, ctx.run.resources().token.0);
         Ok(Outcome {
-            value: Some(value),
+            value: Some(Arc::new(value)),
             state_delta: LevelDelta {
                 visits: Some(1),
                 ..Default::default()
@@ -334,7 +371,7 @@ fn layers(count: usize, route: Route) -> Vec<Arc<Graph<Level, Token, Resources>>
                 vec![id("prepare")],
                 id("report"),
                 |input, ctx| async move {
-                    assert_eq!(input.entry(&id("prepare"))?.entry_origins().len(), 1);
+                    assert_eq!(input.entry(&id("prepare"))?.values().len(), 1);
                     ctx.resources().identities.lock().unwrap().push(Identity {
                         run: ctx.run_id().into(),
                         parent: ctx.parent_run_id().map(str::to_owned),
@@ -368,12 +405,14 @@ async fn three_and_five_levels_share_the_selected_driver_and_ordinary_run_contra
                             token: Arc::new(Token(73)),
                             identities: Mutex::new(vec![]),
                         });
-                        let context = RunContext::root("root".into(), count, resources.clone());
+                        let log = Arc::new(InMemoryEventLog::new());
+                        let context = RunContext::root("root".into(), count, resources.clone())
+                            .with_event_log(log.clone());
                         let run = scheduler
                             .clone()
                             .run(
                                 graph,
-                                input("prepare", vec![resources.token.clone()]),
+                                input("prepare", vec![json(resources.token.as_ref())]),
                                 context,
                             )
                             .await
@@ -383,7 +422,7 @@ async fn three_and_five_levels_share_the_selected_driver_and_ordinary_run_contra
                         assert_eq!(run.state().depth, 0);
                         assert_eq!(run.depth(), 0);
                         assert_eq!(run.waves(), 3);
-                        assert!(Arc::ptr_eq(run.final_output().unwrap(), &resources.token));
+                        assert_eq!(run.final_output().unwrap().0, resources.token.0);
                         assert_eq!(
                             run.instances(&id("worker")).len(),
                             usize::from(matches!(route, Route::Deliver))
@@ -401,9 +440,28 @@ async fn three_and_five_levels_share_the_selected_driver_and_ordinary_run_contra
                             assert_eq!(node.status(), NodeStatus::Completed);
                             assert_eq!(node.attempts(), 1);
                         }
+                        let events = log.all_events().await.unwrap();
                         let records = resources.identities.lock().unwrap();
                         assert_eq!(records.len(), index + 1);
                         for (depth, record) in records.iter().enumerate() {
+                            let history = events
+                                .iter()
+                                .filter(|event| event.run_id() == record.run)
+                                .collect::<Vec<_>>();
+                            assert_eq!(history.first().unwrap().kind(), "run_started");
+                            assert_eq!(history.last().unwrap().kind(), "run_completed");
+                            assert_eq!(
+                                history
+                                    .iter()
+                                    .map(|event| event.seq().get())
+                                    .collect::<Vec<_>>(),
+                                (1..=history.len() as u64).collect::<Vec<_>>()
+                            );
+                            assert!(
+                                history
+                                    .iter()
+                                    .all(|event| event.parent_run_id() == record.parent.as_deref())
+                            );
                             assert_eq!(record.depth, depth);
                             assert_eq!(
                                 record.parent.as_deref(),
@@ -446,30 +504,37 @@ impl Scheduler for DriverFailure {
             match *self {
                 Self::EarlyReturn => return Ok(()),
                 Self::AfterEnd => {
-                    while let Some(ready) = execution.advance()? {
+                    while let Some(ready) = execution.advance().await? {
                         for key in ready {
                             let result = execution.dispatch(&key)?.await;
-                            execution.complete(key, result)?;
+                            execution.complete(key, result).await?;
                         }
                     }
                 }
                 Self::Partial => {
-                    let ready = execution.advance()?.unwrap();
+                    let ready = execution.advance().await?.unwrap();
                     let first = tokio::spawn(execution.dispatch(&ready[0])?);
                     let second = tokio::spawn(execution.dispatch(&ready[1])?);
                     // Reap in the opposite order; settlement must still follow ready order.
-                    execution.complete(ready[1].clone(), second.await.unwrap())?;
-                    execution.complete(ready[0].clone(), first.await.unwrap())?;
+                    execution
+                        .complete(ready[1].clone(), second.await.unwrap())
+                        .await?;
+                    execution
+                        .complete(ready[0].clone(), first.await.unwrap())
+                        .await?;
                 }
                 Self::Protocol => {
                     assert!(matches!(
                         execution.dispatch(&key("first")),
                         Err(Error::Scheduling { .. })
                     ));
-                    let ready = execution.advance()?.unwrap();
-                    assert!(matches!(execution.advance(), Err(Error::Scheduling { .. })));
+                    let ready = execution.advance().await?.unwrap();
                     assert!(matches!(
-                        execution.complete(ready[0].clone(), Ok(())),
+                        execution.advance().await,
+                        Err(Error::Scheduling { .. })
+                    ));
+                    assert!(matches!(
+                        execution.complete(ready[0].clone(), Ok(())).await,
                         Err(Error::Scheduling { .. })
                     ));
                     assert!(matches!(
@@ -482,12 +547,12 @@ impl Scheduler for DriverFailure {
                         Err(Error::Scheduling { .. })
                     ));
                     assert!(matches!(
-                        execution.complete(ready[0].clone(), Ok(())),
+                        execution.complete(ready[0].clone(), Ok(())).await,
                         Err(Error::Scheduling { .. })
                     ));
                     let result = future.await;
-                    execution.complete(ready[0].clone(), result)?;
-                    return execution.complete(ready[0].clone(), Ok(()));
+                    execution.complete(ready[0].clone(), result).await?;
+                    return execution.complete(ready[0].clone(), Ok(())).await;
                 }
             }
             Err(Error::scheduling(std::io::Error::other("driver offline")))
@@ -514,7 +579,7 @@ impl NodeInstance<Wave> for Signal {
             directive: Some(Directive::Deliver(vec![DeliverTarget {
                 template: id("worker"),
                 key: "never-routed".into(),
-                payload: Arc::new(()),
+                payload: Arc::new(serde_json::Value::Null),
             }])),
         })
     }
@@ -541,6 +606,7 @@ async fn driver_failures_settle_started_tasks_preserve_sources_and_suppress_rout
         DriverFailure::AfterEnd,
     ] {
         let driver: Arc<dyn Scheduler> = Arc::new(mode);
+        let log = Arc::new(InMemoryEventLog::new());
         let weak = Arc::downgrade(&driver);
         let run = driver
             .run(
@@ -550,11 +616,20 @@ async fn driver_failures_settle_started_tasks_preserve_sources_and_suppress_rout
                         .map(|name| (id(name), Input::new(vec![])))
                         .into(),
                 ),
-                RunContext::root("failed".into(), 0, Arc::new(())),
+                RunContext::root("failed".into(), 0, Arc::new(())).with_event_log(log.clone()),
             )
             .await
             .unwrap();
         assert_eq!(run.status(), RunStatus::Failed);
+        let events = log.events("failed", 0).await.unwrap();
+        assert_eq!(events.last().unwrap().kind(), "run_failed");
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event.kind() == "control")
+                .count(),
+            usize::from(!matches!(mode, DriverFailure::EarlyReturn))
+        );
         assert!(run.final_output().is_none());
         assert!(run.instances(&id("worker")).is_empty());
         assert!(weak.upgrade().is_none());
@@ -615,7 +690,7 @@ async fn driver_failures_settle_started_tasks_preserve_sources_and_suppress_rout
 
 #[tokio::test]
 async fn a_driver_error_after_successful_settlement_prevents_a_successful_run() {
-    #[derive(Default, State)]
+    #[derive(serde::Serialize, Default, State, serde::Deserialize)]
     struct Empty {}
     struct Done;
     impl NodeInstance<Empty> for Done {
@@ -670,7 +745,7 @@ async fn a_fifth_level_failure_propagates_without_running_parent_successors() {
         let run = scheduler
             .run(
                 graphs.last().unwrap(),
-                input("prepare", vec![resources.token.clone()]),
+                input("prepare", vec![json(resources.token.as_ref())]),
                 RunContext::root("failed-tree".into(), 4, resources.clone()),
             )
             .await
@@ -715,7 +790,7 @@ async fn runtime_carries_observation_context_across_an_independent_driver() {
     let run = scheduler
         .run(
             graphs.last().unwrap(),
-            input("prepare", vec![resources.token.clone()]),
+            input("prepare", vec![json(resources.token.as_ref())]),
             RunContext::root("observed".into(), 4, resources),
         )
         .with_subscriber(subscriber)

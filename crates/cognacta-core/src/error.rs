@@ -1,6 +1,6 @@
 use std::{error::Error as StdError, fmt};
 
-use crate::{NodeId, NodeKey};
+use crate::{EventLogError, HistoryError, NodeId, NodeKey};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -16,6 +16,10 @@ pub enum Error {
     Node(#[from] NodeError),
     #[error("merge error: {0}")]
     Merge(#[from] MergeError),
+    #[error("event log error: {0}")]
+    EventLog(#[from] EventLogError),
+    #[error("history error: {0}")]
+    History(#[from] HistoryError),
     #[error("scheduler failed")]
     Scheduling {
         #[source]
@@ -86,15 +90,17 @@ pub enum InputError {
     MissingEntry { node: NodeId },
     #[error("missing input source {source_node}")]
     MissingSource { source_node: NodeId },
-    #[error("{operation} expected one {expected_type} from {source_node:?}, got {actual}")]
+    #[error("{operation} expected one value from {source_node:?}, got {actual}")]
     Cardinality {
         operation: &'static str,
         source_node: Option<NodeId>,
-        expected_type: &'static str,
         actual: usize,
     },
-    #[error("input type mismatch; expected {expected_type}")]
-    TypeMismatch { expected_type: &'static str },
+    #[error("input value cannot be decoded")]
+    Decode {
+        #[source]
+        source: serde_json::Error,
+    },
 }
 
 #[derive(Debug, thiserror::Error)]

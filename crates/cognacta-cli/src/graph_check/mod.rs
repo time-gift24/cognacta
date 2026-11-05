@@ -20,7 +20,7 @@ pub(crate) enum Scenario {
     All,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 struct Job(u32);
 
 pub(crate) async fn run(scenario: Scenario, writer: &mut impl Write) -> Result<(), Error> {

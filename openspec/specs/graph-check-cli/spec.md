@@ -41,7 +41,7 @@ chain SHALL 运行 complete 和 limit 两个变体：A→B→C，GraphInput 为 
 #### Scenario: Exact quota completes
 
 - **WHEN** 执行 chain/complete
-- **THEN** 三节点各执行一次、waves=3、Run Completed、State.length=5，final_output 直接为 C 的业务值 len=5 的 Arc，断言通过
+- **THEN** 三节点各执行一次、waves=3、Run Completed、State.length=5，final_output 为从 C 的 JSON 输出恢复的业务值 len=5，断言通过
 
 #### Scenario: Limited chain preserves prior work
 
@@ -149,7 +149,7 @@ CLI SHALL 只输出最终文本报告，不增加逐 wave 观察接口。每变�
 
 #### Scenario: An output has the wrong type
 
-- **WHEN** 实际 NodeRun Output 无法 downcast 为该样例约定类型
+- **WHEN** 实际 NodeRun JSON Output 无法反序列化为该样例约定类型
 - **THEN** 报告该项断言失败，不省略该项或以期望输出替代 actual；类型化 final_output 则直接读取 O，无需重新按节点映射定位
 
 ### Requirement: Exit codes describe verification results

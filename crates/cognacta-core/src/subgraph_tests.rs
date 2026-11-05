@@ -7,36 +7,31 @@ use std::{
     },
 };
 
-#[derive(Default, State)]
+#[derive(serde::Serialize, Default, State, serde::Deserialize)]
 struct Data {
     #[reducer(Add)]
     total: usize,
 }
 
 // Deliberately neither Default nor Clone.
-#[derive(State)]
+#[derive(serde::Serialize, State, serde::Deserialize)]
 struct Initialized {
     #[reducer(Override)]
     value: usize,
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
 struct NonClone(usize);
 struct Read;
 impl NodeInstance<Initialized, AtomicUsize> for Read {
     type Output = NonClone;
     async fn run(
         &self,
-        input: &Input,
+        _input: &Input,
         ctx: NodeContext<Initialized, AtomicUsize>,
         _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<Initialized, NonClone>, Error> {
         ctx.run.resources().fetch_add(1, Ordering::SeqCst);
-        assert!(
-            input
-                .entry_origins()
-                .iter()
-                .all(|origin| origin.origin == Origin::Run)
-        );
         Ok(Outcome {
             value: Some(Arc::new(NonClone(ctx.state.value))),
             state_delta: Default::default(),
@@ -46,6 +41,12 @@ impl NodeInstance<Initialized, AtomicUsize> for Read {
 }
 fn input(values: Vec<SharedValue>) -> GraphInput {
     GraphInput::new(HashMap::from([(NodeId::new("entry"), Input::new(values))]))
+}
+fn json(value: impl serde::Serialize) -> SharedValue {
+    Arc::new(serde_json::to_value(value).unwrap())
+}
+fn decode<T: serde::de::DeserializeOwned>(value: &JsonValue) -> Result<T, Error> {
+    serde_json::from_value(value.clone()).map_err(|source| InputError::Decode { source }.into())
 }
 fn scheduler(k: usize) -> Arc<dyn Scheduler> {
     Arc::new(LocalScheduler::new(SchedulerConfig::new(k, 8).unwrap()))
@@ -73,7 +74,7 @@ async fn validates_before_async_initialization_and_releases_resources_with_run_r
                 started.notify_one();
                 proceed.notified().await;
                 Ok(Initialized {
-                    value: *input.entry(&NodeId::new("entry"))?.entry::<usize>()?
+                    value: decode::<usize>(input.entry(&NodeId::new("entry"))?.entry()?)?
                         + ctx.resources().load(Ordering::SeqCst),
                 })
             }
@@ -102,7 +103,7 @@ async fn validates_before_async_initialization_and_releases_resources_with_run_r
     assert_eq!(initialized.load(Ordering::SeqCst), 0);
     let future = local.clone().run(
         &graph,
-        input(vec![Arc::new(5_usize)]),
+        input(vec![json(5_usize)]),
         context(resources.clone()),
     );
     tokio::pin!(future);
@@ -118,11 +119,8 @@ async fn validates_before_async_initialization_and_releases_resources_with_run_r
         .unwrap()
         .output()
         .unwrap()
-        .clone()
-        .downcast::<NonClone>()
-        .ok()
-        .unwrap();
-    assert!(Arc::ptr_eq(&returned, &node_output));
+        .clone();
+    assert_eq!(node_output.as_ref(), &serde_json::json!(15));
     let weak = Arc::downgrade(&resources);
     drop(resources);
     assert!(weak.upgrade().is_none());
@@ -132,7 +130,9 @@ async fn validates_before_async_initialization_and_releases_resources_with_run_r
 struct Value<O> {
     value: Arc<O>,
 }
-impl<O: Send + Sync + 'static, R: Send + Sync + 'static> NodeInstance<Data, R> for Value<O> {
+impl<O: serde::Serialize + Send + Sync + 'static, R: Send + Sync + 'static> NodeInstance<Data, R>
+    for Value<O>
+{
     type Output = O;
     async fn run(
         &self,
@@ -147,7 +147,7 @@ impl<O: Send + Sync + 'static, R: Send + Sync + 'static> NodeInstance<Data, R> f
         })
     }
 }
-fn value<O: Send + Sync + 'static>(id: &str, output: O) -> Node<Data> {
+fn value<O: serde::Serialize + Send + Sync + 'static>(id: &str, output: O) -> Node<Data> {
     Node::new(
         NodeId::new(id),
         Value {
@@ -253,8 +253,13 @@ async fn unit_optional_and_heterogeneous_multi_entry_returns() {
             _scheduler: Arc<dyn Scheduler>,
         ) -> Result<Outcome<Data, usize>, Error> {
             let value = match ctx.key {
-                NodeKey::Static(ref id) if id.as_str() == "text" => input.entry::<String>()?.len(),
-                _ => *input.entry::<usize>()?,
+                NodeKey::Static(ref id) if id.as_str() == "text" => {
+                    (serde_json::from_value::<String>(input.entry()?.clone())
+                        .map_err(|source| cognacta_core::InputError::Decode { source })?)
+                    .len()
+                }
+                _ => serde_json::from_value::<usize>(input.entry()?.clone())
+                    .map_err(|source| cognacta_core::InputError::Decode { source })?,
             };
             Ok(Outcome {
                 value: Some(Arc::new(value)),
@@ -275,11 +280,8 @@ async fn unit_optional_and_heterogeneous_multi_entry_returns() {
     .unwrap();
     let make_input = || {
         GraphInput::new(HashMap::from([
-            (NodeId::new("number"), Input::new(vec![Arc::new(8_usize)])),
-            (
-                NodeId::new("text"),
-                Input::new(vec![Arc::new("abc".to_owned())]),
-            ),
+            (NodeId::new("number"), Input::new(vec![json(8_usize)])),
+            (NodeId::new("text"), Input::new(vec![json("abc")])),
         ]))
     };
     let local = scheduler(2);
@@ -328,7 +330,6 @@ async fn early_return_waits_for_errors_and_call_classifies_all_failure_boundarie
     .unwrap();
     let local = scheduler(1);
     let parent = context(Arc::new(()));
-    let key = NodeKey::Static(NodeId::new("parent"));
     let run = local
         .clone()
         .run(&graph, input(vec![]), parent.clone())
@@ -347,42 +348,41 @@ async fn early_return_waits_for_errors_and_call_classifies_all_failure_boundarie
             .source()
             .is_some()
     );
-    let node_context = || NodeContext {
-        state: Arc::new(Data::default()),
-        run: parent.clone(),
-        key: key.clone(),
-    };
+    async fn child_error(
+        graph: Arc<Graph<Data, usize>>,
+        child_input: GraphInput,
+        max_depth: usize,
+    ) -> Error {
+        let parent = Graph::<Data, usize>::build(
+            vec![Node::new(NodeId::new("entry"), graph)],
+            vec![],
+            vec![],
+            NodeId::new("entry"),
+        )
+        .unwrap();
+        let mut ctx = context(Arc::new(()));
+        ctx.max_depth = max_depth;
+        let mut run = scheduler(1)
+            .run(&parent, input(vec![json(child_input)]), ctx)
+            .await
+            .unwrap();
+        match run.errors.remove(0) {
+            RunError::Node { source, .. } => source,
+            other => panic!("wrong error {other:?}"),
+        }
+    }
+    let graph = Arc::new(graph);
     assert!(matches!(
-        graph
-            .run(
-                &Input::new(vec![Arc::new(input(vec![]))]),
-                node_context(),
-                local.clone()
-            )
-            .await,
-        Err(Error::Call(CallError::Execution { .. }))
+        child_error(graph.clone(), input(vec![]), 3).await,
+        Error::Call(CallError::Execution { .. })
     ));
     assert!(matches!(
-        graph
-            .run(
-                &Input::new(vec![Arc::new(GraphInput::new(HashMap::new()))]),
-                node_context(),
-                local.clone()
-            )
-            .await,
-        Err(Error::Call(CallError::Input { .. }))
+        child_error(graph.clone(), GraphInput::new(HashMap::new()), 3).await,
+        Error::Call(CallError::Input { .. })
     ));
-    let mut zero = node_context();
-    zero.run = RunContext::root("zero".into(), 0, Arc::new(()));
     assert!(matches!(
-        graph
-            .run(
-                &Input::new(vec![Arc::new(input(vec![]))]),
-                zero,
-                local.clone()
-            )
-            .await,
-        Err(Error::Call(CallError::DepthExceeded { .. }))
+        child_error(graph, input(vec![]), 0).await,
+        Error::Call(CallError::DepthExceeded { .. })
     ));
     let graph = Graph::<Data, usize>::build_with_initializer(
         vec![value("entry", 1_usize)],
@@ -392,15 +392,7 @@ async fn early_return_waits_for_errors_and_call_classifies_all_failure_boundarie
         |_, _| async { Err(Error::execution(std::io::Error::other("private-init"))) },
     )
     .unwrap();
-    let error = graph
-        .run(
-            &Input::new(vec![Arc::new(input(vec![]))]),
-            node_context(),
-            local.clone(),
-        )
-        .await
-        .err()
-        .unwrap();
+    let error = child_error(Arc::new(graph), input(vec![]), 3).await;
     assert!(matches!(
         &error,
         Error::Call(CallError::Initialization { .. })
@@ -418,14 +410,8 @@ async fn early_return_waits_for_errors_and_call_classifies_all_failure_boundarie
     )
     .unwrap();
     assert!(matches!(
-        graph
-            .run(
-                &Input::new(vec![Arc::new(input(vec![]))]),
-                node_context(),
-                local
-            )
-            .await,
-        Err(Error::Call(CallError::MissingOutput))
+        child_error(Arc::new(graph), input(vec![]), 3).await,
+        Error::Call(CallError::MissingOutput)
     ));
 }
 
@@ -442,14 +428,17 @@ impl<N: NodeInstance<Data, AtomicUsize, Output = NonClone>> NodeInstance<Data, A
         ctx: NodeContext<Data, AtomicUsize>,
         scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<Data, NonClone>, Error> {
-        let context = || NodeContext {
-            state: ctx.state.clone(),
-            run: ctx.run.clone(),
-            key: ctx.key.clone(),
-        };
-        let outcome = match self.target.run(input, context(), scheduler.clone()).await {
+        let outcome = match self
+            .target
+            .run(input, ctx.with_call_key("try/1")?, scheduler.clone())
+            .await
+        {
             Ok(outcome) => outcome,
-            Err(_) => self.target.run(input, context(), scheduler).await?,
+            Err(_) => {
+                self.target
+                    .run(input, ctx.with_call_key("try/2")?, scheduler)
+                    .await?
+            }
         };
         let value = outcome.value.unwrap();
         Ok(Outcome {
@@ -475,13 +464,13 @@ async fn retry_is_a_new_sibling_with_isolated_state_and_unreverted_side_effects(
             move |input, ctx| {
                 observed.lock().unwrap().push(ctx.clone());
                 async move {
-                    assert_eq!(input.entry(&NodeId::new("entry"))?.all::<usize>()?.len(), 1);
+                    assert_eq!(input.entry(&NodeId::new("entry"))?.values().len(), 1);
                     let attempt = ctx.resources().fetch_add(1, Ordering::SeqCst);
                     if attempt == 0 {
                         return Err(Error::execution(std::io::Error::other("first attempt")));
                     }
                     Ok(Initialized {
-                        value: *input.entry(&NodeId::new("entry"))?.entry::<usize>()?,
+                        value: decode::<usize>(input.entry(&NodeId::new("entry"))?.entry()?)?,
                     })
                 }
             },
@@ -506,10 +495,7 @@ async fn retry_is_a_new_sibling_with_isolated_state_and_unreverted_side_effects(
         .clone()
         .run(
             &graph,
-            input(vec![
-                Arc::new(input(vec![Arc::new(7_usize)])),
-                Arc::new("not forwarded".to_owned()),
-            ]),
+            input(vec![json(input(vec![json(7_usize)]))]),
             context(Arc::new(())),
         )
         .await
@@ -548,7 +534,11 @@ impl NodeInstance<Data, AtomicUsize> for RemoteValue {
         _: Arc<dyn Scheduler>,
     ) -> Result<Outcome<Data, NonClone>, Error> {
         assert_eq!(ctx.run.depth(), 0);
-        assert_eq!(*input.entry::<usize>()?, 9);
+        assert_eq!(
+            (serde_json::from_value::<usize>(input.entry()?.clone())
+                .map_err(|source| cognacta_core::InputError::Decode { source })?),
+            9
+        );
         assert_eq!(ctx.run.resources().load(Ordering::SeqCst), 7);
         Ok(Outcome {
             value: Some(self.output.clone()),
@@ -558,7 +548,7 @@ impl NodeInstance<Data, AtomicUsize> for RemoteValue {
     }
 }
 #[tokio::test]
-async fn non_graph_instance_uses_resource_projection_and_preserves_the_original_arc() {
+async fn non_graph_instance_uses_resource_projection_and_decodes_json_return() {
     let output = Arc::new(NonClone(9));
     let graph = Graph::<Data, NonClone>::build(
         vec![
@@ -576,14 +566,10 @@ async fn non_graph_instance_uses_resource_projection_and_preserves_the_original_
     )
     .unwrap();
     let run = scheduler(1)
-        .run(
-            &graph,
-            input(vec![Arc::new(9_usize)]),
-            context(Arc::new(())),
-        )
+        .run(&graph, input(vec![json(9_usize)]), context(Arc::new(())))
         .await
         .unwrap();
-    assert!(Arc::ptr_eq(&output, &run.into_result().unwrap()));
+    assert_eq!(run.into_result().unwrap().0, output.0);
 }
 
 struct Fanout;
@@ -603,7 +589,7 @@ impl NodeInstance<Data> for Fanout {
                     .map(|i| DeliverTarget {
                         template: NodeId::new("worker"),
                         key: i.to_string(),
-                        payload: Arc::new(input(vec![Arc::new(i as usize)])),
+                        payload: json(input(vec![json(i as usize)])),
                     })
                     .collect(),
             )),
@@ -619,7 +605,11 @@ impl NodeInstance<Data> for Aggregate {
         _: NodeContext<Data>,
         _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<Data, usize>, Error> {
-        let values = input.many::<NonClone>(&NodeId::new("worker"))?;
+        let values = input
+            .many(&NodeId::new("worker"))
+            .into_iter()
+            .map(decode::<NonClone>)
+            .collect::<Result<Vec<_>, _>>()?;
         assert_eq!(values.iter().map(|v| v.0).collect::<Vec<_>>(), [1, 2, 3]);
         Ok(Outcome {
             value: Some(Arc::new(values.iter().map(|v| v.0).sum())),
@@ -653,7 +643,7 @@ async fn template_calls_reuse_child_ids_without_sharing_run_records() {
                     .push((ctx.run_id().to_owned(), ctx.parent_node().cloned()));
                 async move {
                     Ok(Initialized {
-                        value: *input.entry(&NodeId::new("entry"))?.entry::<usize>()?,
+                        value: decode::<usize>(input.entry(&NodeId::new("entry"))?.entry()?)?,
                     })
                 }
             },
@@ -712,7 +702,7 @@ impl NodeInstance<Data> for HandleFailure {
     ) -> Result<Outcome<Data, usize>, Error> {
         assert!(matches!(
             self.child
-                .run(&Input::new(vec![Arc::new(input(vec![]))]), ctx, _scheduler)
+                .run(&Input::new(vec![json(input(vec![]))]), ctx, _scheduler)
                 .await,
             Err(Error::Call(CallError::Execution { .. }))
         ));
@@ -798,7 +788,7 @@ impl NodeInstance<Data, Concurrency> for ConcurrentNode {
                     .collect(),
             );
             child
-                .run(&Input::new(vec![Arc::new(input)]), ctx, _scheduler)
+                .run(&Input::new(vec![json(input)]), ctx, _scheduler)
                 .await?;
         } else {
             resources.permits.acquire().await.unwrap().forget();
@@ -893,7 +883,7 @@ impl NodeInstance<Initialized, AtomicUsize> for ChildPlan {
             directive: Some(Directive::Deliver(vec![DeliverTarget {
                 template: NodeId::new("worker"),
                 key: "same".into(),
-                payload: Arc::new(()),
+                payload: json(()),
             }])),
         })
     }
@@ -908,11 +898,11 @@ impl NodeInstance<Initialized, AtomicUsize> for ChildReturn {
         _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<Initialized, NonClone>, Error> {
         assert!(
-            matches!(&input.origins(&NodeId::new("worker"))[0].origin, Origin::Node(NodeKey::Instance { key, .. }) if key == "same")
+            matches!(&input.values()[0].origin, Origin::Node(NodeKey::Instance { key, .. }) if key == "same")
         );
         Ok(Outcome {
             value: Some(Arc::new(NonClone(
-                input.one::<NonClone>(&NodeId::new("worker"))?.0,
+                decode::<NonClone>(input.one(&NodeId::new("worker"))?)?.0,
             ))),
             state_delta: Default::default(),
             directive: None,
@@ -966,7 +956,7 @@ async fn reactivation_cannot_deliver_the_previous_return_value() {
 }
 
 #[tokio::test]
-async fn graph_node_validates_input_before_initializing_and_shares_the_selected_arc() {
+async fn graph_node_validates_input_before_initializing_and_decodes_selected_json() {
     let selected = Arc::new(input(vec![]));
     let seen = Arc::new(AtomicUsize::new(0));
     let child = Arc::new(
@@ -978,7 +968,7 @@ async fn graph_node_validates_input_before_initializing_and_shares_the_selected_
             {
                 let (selected, seen) = (selected.clone(), seen.clone());
                 move |input, _| {
-                    assert!(Arc::ptr_eq(&input, &selected));
+                    assert_eq!(input.as_ref(), selected.as_ref());
                     seen.fetch_add(1, Ordering::SeqCst);
                     async { Ok(Data::default()) }
                 }
@@ -995,8 +985,8 @@ async fn graph_node_validates_input_before_initializing_and_shares_the_selected_
     .unwrap();
     for values in [
         vec![],
-        vec![Arc::new("wrong type") as SharedValue],
-        vec![selected.clone() as SharedValue, selected.clone()],
+        vec![json("wrong type")],
+        vec![json(selected.as_ref()), json(selected.as_ref())],
     ] {
         let run = scheduler(1)
             .run(&parent, input(values), context(Arc::new(())))
@@ -1014,7 +1004,7 @@ async fn graph_node_validates_input_before_initializing_and_shares_the_selected_
     let run = scheduler(1)
         .run(
             &parent,
-            input(vec![Arc::new(GraphInput::new(HashMap::new()))]),
+            input(vec![json(GraphInput::new(HashMap::new()))]),
             context(Arc::new(())),
         )
         .await
@@ -1030,7 +1020,7 @@ async fn graph_node_validates_input_before_initializing_and_shares_the_selected_
     let run = scheduler(1)
         .run(
             &parent,
-            input(vec![selected, Arc::new("not forwarded")]),
+            input(vec![json(selected.as_ref())]),
             context(Arc::new(())),
         )
         .await
@@ -1189,13 +1179,13 @@ async fn resources_project_a_to_b_to_a_across_different_states_and_fail_at_the_n
     let run = scheduler(1)
         .run(
             &root,
-            input(vec![Arc::new(input(vec![Arc::new(input(vec![]))]))]),
+            input(vec![json(input(vec![json(input(vec![]))]))]),
             context(resources),
         )
         .await
         .unwrap();
     assert_eq!(run.state().total, 0);
-    assert!(Arc::ptr_eq(run.final_output().unwrap(), &output));
+    assert_eq!(run.final_output().unwrap().0, output.0);
     assert!(weak_resources.upgrade().is_none());
     assert_eq!(
         started
@@ -1220,7 +1210,7 @@ async fn resources_project_a_to_b_to_a_across_different_states_and_fail_at_the_n
     let run = scheduler(1)
         .run(
             &failed,
-            input(vec![Arc::new(input(vec![]))]),
+            input(vec![json(input(vec![]))]),
             context(Arc::new(())),
         )
         .await

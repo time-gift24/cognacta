@@ -1,47 +1,27 @@
-error[E0277]: `Rc<String>` cannot be sent between threads safely
- --> tests/derive/not_send_sync.rs:3:10
+error[E0277]: `Rc<std::string::String>` cannot be sent between threads safely
+ --> tests/derive/not_send_sync.rs:3:28
   |
-3 | #[derive(State)]
-  |          ^^^^^ `Rc<String>` cannot be sent between threads safely
+3 | #[derive(serde::Serialize, State, serde::Deserialize)]
+  |                            ^^^^^ `Rc<std::string::String>` cannot be sent between threads safely
   |
-  = help: the trait `Send` is not implemented for `Rc<String>`
+  = help: the trait `Send` is not implemented for `Rc<std::string::String>`
 help: the trait `Reducer<T>` is conditionally implemented for `Override`
  --> src/state.rs
   |
-  | impl<T: Send + 'static> Reducer<T> for Override {
-  | ^^^^^^^^----^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  |         |
-  |         unsatisfied requirement introduced here: `Rc<String>: Send`
-  = note: required for `Override` to implement `Reducer<Rc<String>>`
+  | impl<T: serde::Serialize + serde::de::DeserializeOwned + Send + 'static> Reducer<T> for Override {
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^----^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |                                                          |
+  |                                                          unsatisfied requirement introduced here: `Rc<std::string::String>: Send`
+  = note: required for `Override` to implement `Reducer<Rc<std::string::String>>`
   = note: this error originates in the derive macro `State` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0277]: `Rc<String>` cannot be sent between threads safely
- --> tests/derive/not_send_sync.rs:3:10
+error[E0277]: `Rc<std::string::String>` cannot be sent between threads safely
+ --> tests/derive/not_send_sync.rs:3:28
   |
-3 | #[derive(State)]
-  |          ^^^^^ `Rc<String>` cannot be sent between threads safely
+3 | #[derive(serde::Serialize, State, serde::Deserialize)]
+  |                            ^^^^^ `Rc<std::string::String>` cannot be sent between threads safely
   |
-  = help: the trait `Send` is not implemented for `Rc<String>`
-  = note: required for `Override` to implement `Reducer<Rc<String>>`
-note: required because it appears within the type `BadDelta`
- --> tests/derive/not_send_sync.rs:3:10
-  |
-3 | #[derive(State)]
-  |          ^^^^^
-note: required by a bound in `cognacta_core::State::Delta`
- --> src/state.rs
-  |
-  |     type Delta: Default + Send + 'static;
-  |                           ^^^^ required by this bound in `State::Delta`
-  = note: this error originates in the derive macro `State` (in Nightly builds, run with -Z macro-backtrace for more info)
-
-error[E0277]: `Rc<String>` cannot be sent between threads safely
- --> tests/derive/not_send_sync.rs:3:10
-  |
-3 | #[derive(State)]
-  |          ^^^^^ `Rc<String>` cannot be sent between threads safely
-  |
-  = help: within `Bad`, the trait `Send` is not implemented for `Rc<String>`
+  = help: within `Bad`, the trait `Send` is not implemented for `Rc<std::string::String>`
 note: required because it appears within the type `Bad`
  --> tests/derive/not_send_sync.rs:4:8
   |
@@ -50,17 +30,17 @@ note: required because it appears within the type `Bad`
 note: required by a bound in `cognacta_core::State`
  --> src/state.rs
   |
-  | pub trait State: Send + Sync + 'static {
-  |                  ^^^^ required by this bound in `State`
+  | pub trait State: serde::Serialize + serde::de::DeserializeOwned + Send + Sync + 'static {
+  |                                                                   ^^^^ required by this bound in `State`
   = note: this error originates in the derive macro `State` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0277]: `Rc<String>` cannot be shared between threads safely
- --> tests/derive/not_send_sync.rs:3:10
+error[E0277]: `Rc<std::string::String>` cannot be shared between threads safely
+ --> tests/derive/not_send_sync.rs:3:28
   |
-3 | #[derive(State)]
-  |          ^^^^^ `Rc<String>` cannot be shared between threads safely
+3 | #[derive(serde::Serialize, State, serde::Deserialize)]
+  |                            ^^^^^ `Rc<std::string::String>` cannot be shared between threads safely
   |
-  = help: within `Bad`, the trait `Sync` is not implemented for `Rc<String>`
+  = help: within `Bad`, the trait `Sync` is not implemented for `Rc<std::string::String>`
 note: required because it appears within the type `Bad`
  --> tests/derive/not_send_sync.rs:4:8
   |
@@ -69,17 +49,17 @@ note: required because it appears within the type `Bad`
 note: required by a bound in `cognacta_core::State`
  --> src/state.rs
   |
-  | pub trait State: Send + Sync + 'static {
-  |                         ^^^^ required by this bound in `State`
+  | pub trait State: serde::Serialize + serde::de::DeserializeOwned + Send + Sync + 'static {
+  |                                                                          ^^^^ required by this bound in `State`
   = note: this error originates in the derive macro `State` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0277]: `Rc<String>` cannot be shared between threads safely
+error[E0277]: `Rc<std::string::String>` cannot be shared between threads safely
  --> tests/derive/not_send_sync.rs:4:8
   |
 4 | struct Bad {
-  |        ^^^ `Rc<String>` cannot be shared between threads safely
+  |        ^^^ `Rc<std::string::String>` cannot be shared between threads safely
   |
-  = help: within `Bad`, the trait `Sync` is not implemented for `Rc<String>`
+  = help: within `Bad`, the trait `Sync` is not implemented for `Rc<std::string::String>`
 note: required because it appears within the type `Bad`
  --> tests/derive/not_send_sync.rs:4:8
   |
@@ -88,16 +68,16 @@ note: required because it appears within the type `Bad`
 note: required by a bound in `cognacta_core::State`
  --> src/state.rs
   |
-  | pub trait State: Send + Sync + 'static {
-  |                         ^^^^ required by this bound in `State`
+  | pub trait State: serde::Serialize + serde::de::DeserializeOwned + Send + Sync + 'static {
+  |                                                                          ^^^^ required by this bound in `State`
 
-error[E0277]: `Rc<String>` cannot be sent between threads safely
+error[E0277]: `Rc<std::string::String>` cannot be sent between threads safely
  --> tests/derive/not_send_sync.rs:4:8
   |
 4 | struct Bad {
-  |        ^^^ `Rc<String>` cannot be sent between threads safely
+  |        ^^^ `Rc<std::string::String>` cannot be sent between threads safely
   |
-  = help: within `Bad`, the trait `Send` is not implemented for `Rc<String>`
+  = help: within `Bad`, the trait `Send` is not implemented for `Rc<std::string::String>`
 note: required because it appears within the type `Bad`
  --> tests/derive/not_send_sync.rs:4:8
   |
@@ -106,21 +86,25 @@ note: required because it appears within the type `Bad`
 note: required by a bound in `cognacta_core::State`
  --> src/state.rs
   |
-  | pub trait State: Send + Sync + 'static {
-  |                  ^^^^ required by this bound in `State`
+  | pub trait State: serde::Serialize + serde::de::DeserializeOwned + Send + Sync + 'static {
+  |                                                                   ^^^^ required by this bound in `State`
 
-error[E0277]: `Rc<String>` cannot be sent between threads safely
- --> tests/derive/not_send_sync.rs:5:15
+error[E0308]: mismatched types
+ --> tests/derive/not_send_sync.rs:3:28
   |
-5 |     #[reducer(Override)]
-  |               ^^^^^^^^ `Rc<String>` cannot be sent between threads safely
+3 | #[derive(serde::Serialize, State, serde::Deserialize)]
+  |                            ^^^^^
+  |                            |
+  |                            expected `Rc<String>`, found associated type
+  |                            arguments to this function are incorrect
   |
-  = help: the trait `Send` is not implemented for `Rc<String>`
-help: the trait `Reducer<T>` is conditionally implemented for `Override`
+  = note:       expected struct `Rc<std::string::String>`
+          found associated type `<Override as Reducer<Rc<std::string::String>>>::Delta`
+  = help: consider constraining the associated type `<Override as Reducer<Rc<std::string::String>>>::Delta` to `Rc<std::string::String>`
+  = note: for more information, visit https://doc.rust-lang.org/book/ch19-03-advanced-traits.html
+note: method defined here
  --> src/state.rs
   |
-  | impl<T: Send + 'static> Reducer<T> for Override {
-  | ^^^^^^^^----^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  |         |
-  |         unsatisfied requirement introduced here: `Rc<String>: Send`
-  = note: required for `Override` to implement `Reducer<Rc<String>>`
+  |     fn reduce(&mut self, current: &T, delta: Self::Delta) -> Result<T, Error>;
+  |        ^^^^^^
+  = note: this error originates in the derive macro `State` (in Nightly builds, run with -Z macro-backtrace for more info)

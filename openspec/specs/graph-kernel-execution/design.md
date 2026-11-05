@@ -1,8 +1,10 @@
 # Graph 内核设计
 
+> 历史内核设计快照。下文旧的 TypeId、SourceRef、无 Serde State 和 RunOutput 等接口代码不代表当前实现；当前公开签名见 [EventLog API 附录](../../../docs/design/event-log-api.md)，行为要求见 [图执行规格](spec.md) 与 [JSON 业务值规格](../json-event-values/spec.md)。EventLog、状态写入、wave 和递归恢复见 [EventLog 设计](../../../docs/design/event-log.md) 与 [恢复规格](../event-log-recovery/spec.md)。
+
 ## Context
 
-本文记录已实现的 Cognacta 图内核与 CLI dev 验收入口，补充 [图执行规格](spec.md)、[State/reducer 规格](../typed-state-reducers/spec.md)及 [CLI 规格](../graph-check-cli/spec.md)中的公共 API 与实施约束。
+本文保留首版 Cognacta 图内核与 CLI dev 验收入口的设计快照。当前 JSON 输入、输出及恢复接口以 [图执行规格](spec.md)、[State/reducer 规格](../typed-state-reducers/spec.md)、[JSON 业务值规格](../json-event-values/spec.md)和 [API 附录](../../../docs/design/event-log-api.md)为准。
 
 核心名词为 Graph、NodeInstance、Outcome、Directive、Transition、Deliver。Run Completed 表示图无剩余工作。CLI dev feature 默认关闭，提供六类确定性图；预期失败通过断言后退出 0；仅提供最终报告，不新增日志、span、指标或逐 wave 观察接口。
 

@@ -2,6 +2,7 @@ use std::cell::Cell;
 
 use cognacta_core::{Error, Override, Reducer, State, WritePolicy};
 
+#[derive(serde::Serialize, serde::Deserialize)]
 struct NotClone(String);
 
 #[derive(Default)]
@@ -20,7 +21,7 @@ impl Reducer<u32> for CellDelta {
     }
 }
 
-#[derive(State)]
+#[derive(serde::Serialize, State, serde::Deserialize)]
 pub struct GenericState<T>
 where
     T: Send + Sync + 'static,

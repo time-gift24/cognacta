@@ -61,7 +61,7 @@ async fn execute<S: State>(
         .await
 }
 
-#[derive(Default, State)]
+#[derive(serde::Serialize, Default, State, serde::Deserialize)]
 struct ChainState {
     #[reducer(Override)]
     length: u32,
@@ -77,7 +77,10 @@ impl NodeInstance<ChainState> for ChainA {
         _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<ChainState, String>, Error> {
         Ok(Outcome {
-            value: Some(Arc::new(input.entry::<String>()?.clone())),
+            value: Some(Arc::new(
+                serde_json::from_value(input.entry()?.clone())
+                    .map_err(|source| cognacta_core::InputError::Decode { source })?,
+            )),
             state_delta: ChainStateDelta::default(),
             directive: None,
         })
@@ -93,7 +96,9 @@ impl NodeInstance<ChainState> for ChainB {
         _ctx: NodeContext<ChainState>,
         _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<ChainState, u32>, Error> {
-        let length = input.one::<String>(&NodeId::new("A"))?.len() as u32;
+        let value: String = serde_json::from_value(input.one(&NodeId::new("A"))?.clone())
+            .map_err(|source| cognacta_core::InputError::Decode { source })?;
+        let length = value.len() as u32;
         Ok(Outcome {
             value: Some(Arc::new(length)),
             state_delta: ChainStateDelta {
@@ -113,8 +118,9 @@ impl NodeInstance<ChainState> for ChainC {
         ctx: NodeContext<ChainState>,
         _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<ChainState, String>, Error> {
-        let length = input.one::<u32>(&NodeId::new("B"))?;
-        if ctx.state.length != *length {
+        let length: u32 = serde_json::from_value(input.one(&NodeId::new("B"))?.clone())
+            .map_err(|source| cognacta_core::InputError::Decode { source })?;
+        if ctx.state.length != length {
             return Err(Error::execution(std::io::Error::other(
                 "state was not settled before the next wave",
             )));
@@ -160,7 +166,7 @@ pub(super) async fn chain(limited: bool) -> Result<CaseReport, Error> {
         .concurrency(1)
         .waves(if limited { 2 } else { 3 })
         .entry(NodeId::new("A"))
-        .entries(vec![Arc::new(String::from("hello")) as SharedValue])
+        .entries(vec![Arc::new(serde_json::json!("hello"))])
         .call()
         .await?;
     let mut report = CaseReport::capture(
@@ -210,7 +216,7 @@ pub(super) async fn chain(limited: bool) -> Result<CaseReport, Error> {
         "Run",
         super::report::input_fact(&run, &key("A"), |input| {
             Ok(input
-                .entry_origins()
+                .values()
                 .first()
                 .map_or_else(|| "missing".into(), |source| format!("{:?}", source.origin)))
         }),
@@ -238,7 +244,7 @@ pub(super) async fn chain(limited: bool) -> Result<CaseReport, Error> {
     Ok(report)
 }
 
-#[derive(Default, State)]
+#[derive(serde::Serialize, Default, State, serde::Deserialize)]
 struct DiamondState {
     #[reducer(Add)]
     count: u32,
@@ -311,8 +317,10 @@ impl NodeInstance<DiamondState> for DiamondD {
         ctx: NodeContext<DiamondState>,
         _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<DiamondState, String>, Error> {
-        let b = input.one::<u32>(&NodeId::new("B"))?;
-        let c = input.one::<u32>(&NodeId::new("C"))?;
+        let b: u32 = serde_json::from_value(input.one(&NodeId::new("B"))?.clone())
+            .map_err(|source| cognacta_core::InputError::Decode { source })?;
+        let c: u32 = serde_json::from_value(input.one(&NodeId::new("C"))?.clone())
+            .map_err(|source| cognacta_core::InputError::Decode { source })?;
         Ok(Outcome {
             value: Some(Arc::new(format!("B={b},C={c},count={}", ctx.state.count))),
             state_delta: DiamondStateDelta::default(),
@@ -428,8 +436,7 @@ pub(super) async fn diamond(parallel: bool) -> Result<CaseReport, Error> {
         "Node(Static(NodeId(\"B\")))",
         super::report::input_fact(&run, &key("D"), |input| {
             Ok(input
-                .origins(&NodeId::new("B"))
-                .first()
+                .values().iter().find(|entry| matches!(&entry.origin, cognacta_core::Origin::Node(NodeKey::Static(id)) if id.as_str() == "B"))
                 .map_or_else(|| "missing".into(), |source| format!("{:?}", source.origin)))
         }),
     );
@@ -438,8 +445,7 @@ pub(super) async fn diamond(parallel: bool) -> Result<CaseReport, Error> {
         "Node(Static(NodeId(\"C\")))",
         super::report::input_fact(&run, &key("D"), |input| {
             Ok(input
-                .origins(&NodeId::new("C"))
-                .first()
+                .values().iter().find(|entry| matches!(&entry.origin, cognacta_core::Origin::Node(NodeKey::Static(id)) if id.as_str() == "C"))
                 .map_or_else(|| "missing".into(), |source| format!("{:?}", source.origin)))
         }),
     );
@@ -453,7 +459,7 @@ pub(super) async fn diamond(parallel: bool) -> Result<CaseReport, Error> {
     Ok(report)
 }
 
-#[derive(Default, State)]
+#[derive(serde::Serialize, Default, State, serde::Deserialize)]
 struct EmptyState {}
 
 struct Text(&'static str);
@@ -582,7 +588,7 @@ pub(super) async fn branch(any: bool) -> Result<CaseReport, Error> {
     Ok(report)
 }
 
-#[derive(Default, State)]
+#[derive(serde::Serialize, Default, State, serde::Deserialize)]
 struct FanoutState {
     #[reducer(Add)]
     total: u32,
@@ -602,7 +608,7 @@ impl NodeInstance<FanoutState> for Planner {
         let targets = (1..=self.0)
             .map(|job| cognacta_core::DeliverTarget {
                 template: NodeId::new("worker"),
-                payload: Arc::new(Job(job as u32)) as SharedValue,
+                payload: Arc::new(serde_json::json!(job as u32)),
                 key: format!("w{job}"),
             })
             .collect();
@@ -623,7 +629,8 @@ impl NodeInstance<FanoutState> for FanoutWorker {
         _ctx: NodeContext<FanoutState>,
         _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<FanoutState, Job>, Error> {
-        let job = *input.one::<Job>(&NodeId::new("planner"))?;
+        let job: Job = serde_json::from_value(input.one(&NodeId::new("planner"))?.clone())
+            .map_err(|source| cognacta_core::InputError::Decode { source })?;
         Ok(Outcome {
             value: Some(Arc::new(job)),
             state_delta: FanoutStateDelta {
@@ -644,7 +651,14 @@ impl NodeInstance<FanoutState> for Aggregate {
         _ctx: NodeContext<FanoutState>,
         _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<FanoutState, String>, Error> {
-        let jobs = input.many::<Job>(&NodeId::new("worker"))?;
+        let jobs = input
+            .many(&NodeId::new("worker"))
+            .into_iter()
+            .map(|value| {
+                serde_json::from_value::<Job>(value.clone())
+                    .map_err(|source| cognacta_core::InputError::Decode { source })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(Outcome {
             value: Some(Arc::new(format!("jobs={jobs:?}"))),
             state_delta: FanoutStateDelta::default(),
@@ -701,7 +715,7 @@ pub(super) async fn fanout(count: usize) -> Result<CaseReport, Error> {
         ],
         |node, value| {
             if matches!(node, NodeKey::Instance { .. }) {
-                value.downcast_ref::<Job>().map(|job| job.0.to_string())
+                value.as_u64().map(|job| job.to_string())
             } else {
                 format_value::<String>(value)
             }
@@ -722,9 +736,9 @@ pub(super) async fn fanout(count: usize) -> Result<CaseReport, Error> {
             Ok(format!(
                 "{:?}",
                 input
-                    .many::<Job>(&NodeId::new("worker"))?
+                    .many(&NodeId::new("worker"))
                     .into_iter()
-                    .map(|job| job.0)
+                    .map(|job| job.as_u64().unwrap() as u32)
                     .collect::<Vec<_>>()
             ))
         }),
@@ -750,7 +764,7 @@ pub(super) async fn fanout(count: usize) -> Result<CaseReport, Error> {
         "instance-origins",
         count.to_string(),
         super::report::input_fact(&run, &key("aggregate"), |input| {
-            Ok(input.origins(&NodeId::new("worker")).len().to_string())
+            Ok(input.many(&NodeId::new("worker")).len().to_string())
         }),
     );
     if count > 1 {
@@ -758,7 +772,7 @@ pub(super) async fn fanout(count: usize) -> Result<CaseReport, Error> {
             "one-cardinality",
             count.to_string(),
             super::report::input_fact(&run, &key("aggregate"), |input| {
-                match input.one::<Job>(&NodeId::new("worker")) {
+                match input.one(&NodeId::new("worker")) {
                     Err(Error::Input(cognacta_core::InputError::Cardinality {
                         actual, ..
                     })) => Ok(actual.to_string()),
@@ -787,7 +801,7 @@ pub(super) async fn fanout(count: usize) -> Result<CaseReport, Error> {
     Ok(report)
 }
 
-#[derive(Default, State)]
+#[derive(serde::Serialize, Default, State, serde::Deserialize)]
 struct TransitionState {
     #[reducer(Add)]
     count: u32,
@@ -807,7 +821,7 @@ impl NodeInstance<TransitionState> for TransitionA {
             state_delta: TransitionStateDelta::default(),
             directive: Some(Directive::Transition {
                 target: NodeId::new("T"),
-                payload: Some(Arc::new(7_u32) as SharedValue),
+                payload: Some(Arc::new(serde_json::json!(7_u32))),
                 immediate: self.0,
             }),
         })
@@ -841,7 +855,8 @@ impl NodeInstance<TransitionState> for TransitionT {
         ctx: NodeContext<TransitionState>,
         _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<TransitionState, String>, Error> {
-        let payload = input.one::<u32>(&NodeId::new("A"))?;
+        let payload: u32 = serde_json::from_value(input.one(&NodeId::new("A"))?.clone())
+            .map_err(|source| cognacta_core::InputError::Decode { source })?;
         Ok(Outcome {
             value: Some(Arc::new(format!("{payload}@{}", ctx.state.count))),
             state_delta: TransitionStateDelta::default(),
@@ -928,21 +943,21 @@ pub(super) async fn transition(immediate: bool) -> Result<CaseReport, Error> {
         "T-payload-sources",
         "1",
         super::report::input_fact(&run, &key("T"), |input| {
-            Ok(input.origins(&NodeId::new("A")).len().to_string())
+            Ok(input.many(&NodeId::new("A")).len().to_string())
         }),
     );
     report.check(
         "T-u32-values",
         "1",
         super::report::input_fact(&run, &key("T"), |input| {
-            Ok(input.all::<u32>()?.len().to_string())
+            Ok(input.values().len().to_string())
         }),
     );
     report.check(
         "T-Q-values",
         "0",
         super::report::input_fact(&run, &key("T"), |input| {
-            Ok(input.many::<u32>(&NodeId::new("Q"))?.len().to_string())
+            Ok(input.many(&NodeId::new("Q")).len().to_string())
         }),
     );
     for name in ["A", "P", "Q", "T"] {
@@ -955,7 +970,7 @@ pub(super) async fn transition(immediate: bool) -> Result<CaseReport, Error> {
     Ok(report)
 }
 
-#[derive(Default, State)]
+#[derive(serde::Serialize, Default, State, serde::Deserialize)]
 struct SettlementState {
     #[reducer(Override)]
     title: Option<String>,
@@ -989,7 +1004,7 @@ impl NodeInstance<SettlementState> for Seed {
         let targets = (1..=self.workers)
             .map(|index| cognacta_core::DeliverTarget {
                 template: NodeId::new("worker"),
-                payload: Arc::new(format!("w{index}")) as SharedValue,
+                payload: Arc::new(serde_json::json!(format!("w{index}"))),
                 key: format!("w{index}"),
             })
             .collect();
@@ -1016,7 +1031,8 @@ impl NodeInstance<SettlementState> for SettlementWorker {
         _ctx: NodeContext<SettlementState>,
         _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<SettlementState, String>, Error> {
-        let name = input.one::<String>(&NodeId::new("seed"))?.clone();
+        let name: String = serde_json::from_value(input.one(&NodeId::new("seed"))?.clone())
+            .map_err(|source| cognacta_core::InputError::Decode { source })?;
         let failed = (self.kind == SettlementKind::NodeError && name == "w1")
             || (self.kind == SettlementKind::MultiError && (name == "w1" || name == "w2"));
         if failed {
@@ -1029,19 +1045,19 @@ impl NodeInstance<SettlementState> for SettlementWorker {
             SettlementKind::DirectiveError => Some(Directive::Deliver(vec![
                 cognacta_core::DeliverTarget {
                     template: NodeId::new("aux"),
-                    payload: Arc::new(String::from("aux")) as SharedValue,
+                    payload: Arc::new(serde_json::json!("aux")),
                     key: "a1".into(),
                 },
                 cognacta_core::DeliverTarget {
                     template: NodeId::new("missing"),
-                    payload: Arc::new(String::from("bad")) as SharedValue,
+                    payload: Arc::new(serde_json::json!("bad")),
                     key: "bad".into(),
                 },
             ])),
             SettlementKind::MultiError => {
                 Some(Directive::Deliver(vec![cognacta_core::DeliverTarget {
                     template: NodeId::new("missing"),
-                    payload: Arc::new(String::from("bad")) as SharedValue,
+                    payload: Arc::new(serde_json::json!("bad")),
                     key: format!("bad{name}"),
                 }]))
             }
@@ -1068,7 +1084,14 @@ impl NodeInstance<SettlementState> for SettlementAggregate {
         _ctx: NodeContext<SettlementState>,
         _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<SettlementState, String>, Error> {
-        let values = input.many::<String>(&NodeId::new("worker"))?;
+        let values = input
+            .many(&NodeId::new("worker"))
+            .into_iter()
+            .map(|value| {
+                serde_json::from_value::<String>(value.clone())
+                    .map_err(|source| cognacta_core::InputError::Decode { source })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(Outcome {
             value: Some(Arc::new(format!("{values:?}"))),
             state_delta: SettlementStateDelta::default(),

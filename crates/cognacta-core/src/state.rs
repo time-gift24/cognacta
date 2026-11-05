@@ -15,8 +15,8 @@ pub struct StateField<F> {
     pub policy: WritePolicy,
 }
 
-pub trait State: Send + Sync + 'static {
-    type Delta: Default + Send + 'static;
+pub trait State: serde::Serialize + serde::de::DeserializeOwned + Send + Sync + 'static {
+    type Delta: serde::Serialize + serde::de::DeserializeOwned + Default + Send + 'static;
     type Field: Copy + Eq + Hash + Send + Sync + 'static;
 
     fn fields() -> &'static [StateField<Self::Field>];
@@ -24,7 +24,7 @@ pub trait State: Send + Sync + 'static {
 }
 
 pub trait Reducer<T> {
-    type Delta: Send + 'static;
+    type Delta: serde::Serialize + serde::de::DeserializeOwned + Send + 'static;
     const POLICY: WritePolicy;
 
     fn reduce(&mut self, current: &T, delta: Self::Delta) -> Result<T, Error>;
@@ -34,7 +34,7 @@ pub trait Reducer<T> {
 #[derive(Default)]
 pub struct Override;
 
-impl<T: Send + 'static> Reducer<T> for Override {
+impl<T: serde::Serialize + serde::de::DeserializeOwned + Send + 'static> Reducer<T> for Override {
     type Delta = T;
     const POLICY: WritePolicy = WritePolicy::SingleWriter;
 
@@ -50,7 +50,9 @@ impl<T: Send + 'static> Reducer<T> for Override {
 #[derive(Default)]
 pub struct Append;
 
-impl<T: Clone + Send + 'static> Reducer<Vec<T>> for Append {
+impl<T: serde::Serialize + serde::de::DeserializeOwned + Clone + Send + 'static> Reducer<Vec<T>>
+    for Append
+{
     type Delta = Vec<T>;
     const POLICY: WritePolicy = WritePolicy::MultiWriter;
 
@@ -70,8 +72,8 @@ pub struct Merge;
 
 impl<K, V> Reducer<HashMap<K, V>> for Merge
 where
-    K: Eq + Hash + Clone + Send + 'static,
-    V: Clone + Send + 'static,
+    K: serde::Serialize + serde::de::DeserializeOwned + Eq + Hash + Clone + Send + 'static,
+    V: serde::Serialize + serde::de::DeserializeOwned + Clone + Send + 'static,
 {
     type Delta = HashMap<K, V>;
     const POLICY: WritePolicy = WritePolicy::MultiWriter;
@@ -178,7 +180,7 @@ mod tests {
         }
     }
 
-    #[derive(crate::State)]
+    #[derive(serde::Serialize, crate::State, serde::Deserialize)]
     struct OrderedState {
         #[reducer(Record, init = Record::new("first"))]
         first: u8,

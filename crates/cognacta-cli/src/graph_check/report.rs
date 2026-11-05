@@ -1,4 +1,4 @@
-use std::{any::Any, fmt::Debug, io::Write};
+use std::{fmt::Debug, io::Write};
 
 use cognacta_core::{
     DirectiveError, Error, Input, MergeError, NodeError, NodeKey, NodeStatus, Run, RunError,
@@ -206,8 +206,12 @@ pub(super) fn input_fact<S: State, O: Send + Sync + 'static>(
     }
 }
 
-pub(super) fn format_value<T: Any + Debug>(value: &SharedValue) -> Option<String> {
-    value.downcast_ref::<T>().map(|value| format!("{value:?}"))
+pub(super) fn format_value<T: serde::de::DeserializeOwned + Debug>(
+    value: &SharedValue,
+) -> Option<String> {
+    serde_json::from_value::<T>(value.as_ref().clone())
+        .ok()
+        .map(|value| format!("{value:?}"))
 }
 
 fn run_status(status: RunStatus) -> &'static str {
@@ -251,6 +255,7 @@ pub(super) fn run_error(error: &RunError) -> String {
 
 fn error_kind(error: &Error) -> String {
     match error {
+        Error::History(_) => "History".into(),
         Error::Call(error) => format!(
             "Call({})",
             match error {
@@ -262,6 +267,7 @@ fn error_kind(error: &Error) -> String {
             }
         ),
         Error::Scheduling { .. } => "Scheduling".into(),
+        Error::EventLog(_) => "EventLog".into(),
         Error::Graph(_) => "Graph".into(),
         Error::Config(_) => "Config".into(),
         Error::Input(error) => format!("Input({error:?})"),
@@ -302,7 +308,7 @@ mod tests {
         assert_eq!(report.assertions[1].actual, "type-mismatch");
     }
 
-    #[derive(Default, cognacta_core::State)]
+    #[derive(serde::Serialize, Default, cognacta_core::State, serde::Deserialize)]
     struct EmptyState {}
 
     struct Echo;
@@ -315,7 +321,10 @@ mod tests {
             _scheduler: Arc<dyn Scheduler>,
         ) -> Result<cognacta_core::Outcome<EmptyState, u32>, Error> {
             Ok(cognacta_core::Outcome {
-                value: Some(Arc::new(*input.entry::<u32>()?)),
+                value: Some(Arc::new(
+                    serde_json::from_value::<u32>(input.entry()?.clone())
+                        .map_err(|source| cognacta_core::InputError::Decode { source })?,
+                )),
                 state_delta: EmptyStateDelta::default(),
                 directive: None,
             })
@@ -344,7 +353,7 @@ mod tests {
                     &graph,
                     GraphInput::new(std::collections::HashMap::from([(
                         id.clone(),
-                        Input::new(vec![Arc::new(7_u32)]),
+                        Input::new(vec![Arc::new(serde_json::json!(7_u32))]),
                     )])),
                     RunContext::root("facts".into(), 1, Arc::new(())),
                 )
@@ -362,15 +371,23 @@ mod tests {
             report.check("absent-attempts", "1", report.node_attempts(&absent));
             report.check("absent-output", "7", report.node_output(&absent));
             assert_eq!(input_fact(&run, &absent, |_| unreachable!()), "missing");
-            let input = input_fact(&run, &key, |input| Ok(input.entry::<u32>()?.to_string()));
+            let input = input_fact(&run, &key, |input| {
+                Ok((serde_json::from_value::<u32>(input.entry()?.clone())
+                    .map_err(|source| cognacta_core::InputError::Decode { source })?)
+                .to_string())
+            });
             assert_eq!(input, if waves == 0 { "missing" } else { "7" });
             if waves == 1 {
                 // An expected failure can become a success during a regression.
                 report.check("expected-error", "Stalled", report.error(0));
                 assert_eq!(report.error(0), "missing");
                 assert!(
-                    input_fact(&run, &key, |input| Ok(input.entry::<String>()?.clone()))
-                        .starts_with("Input(")
+                    input_fact(&run, &key, |input| Ok((serde_json::from_value::<String>(
+                        input.entry()?.clone()
+                    )
+                    .map_err(|source| cognacta_core::InputError::Decode { source })?)
+                    .clone()))
+                    .starts_with("Input(")
                 );
             }
             assert!(!report.passed());

@@ -16,6 +16,10 @@ fn state_derive_compile_contracts() {
 fn graph_compile_contracts() {
     let tests = trybuild::TestCases::new();
     tests.pass("tests/graph/pass.rs");
+    tests.pass("tests/graph/macros.rs");
+    tests.compile_fail("tests/graph/macro_duplicate_node.rs");
+    tests.compile_fail("tests/graph/macro_duplicate_input.rs");
+    tests.compile_fail("tests/graph/macro_invalid_syntax.rs");
     tests.compile_fail("tests/graph/missing_default.rs");
     tests.compile_fail("tests/graph/initializer_not_send.rs");
     tests.compile_fail("tests/graph/resource_not_sync.rs");

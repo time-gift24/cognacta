@@ -1,4 +1,4 @@
-use crate::{GraphInput, RunContext};
+use crate::{EventData, EventLog, GraphInput, InMemoryEventLog, RunContext};
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicUsize, Ordering},
@@ -10,7 +10,7 @@ use crate::{
     RunError, RunStatus, Scheduler, SchedulerConfig, State,
 };
 
-#[derive(Default, State)]
+#[derive(serde::Serialize, Default, State, serde::Deserialize)]
 struct TestState {
     #[reducer(Override)]
     title: Option<String>,
@@ -181,6 +181,7 @@ async fn panic_and_business_error_keep_their_node_keys() {
 #[tokio::test]
 async fn escaped_state_reports_invariant_and_retains_output() {
     let leaked = Arc::new(Mutex::new(None));
+    let log = Arc::new(InMemoryEventLog::new());
     let graph = Graph::<_, String>::build(
         vec![Node::new(
             NodeId::new("leak"),
@@ -204,7 +205,7 @@ async fn escaped_state_reports_invariant_and_retains_output() {
                     .map(|id| (id.clone(), Input::new(vec![])))
                     .collect(),
             ),
-            RunContext::root("leak".into(), 4, Arc::new(())),
+            RunContext::root("leak".into(), 4, Arc::new(())).with_event_log(log.clone()),
         )
         .await
         .unwrap();
@@ -217,6 +218,18 @@ async fn escaped_state_reports_invariant_and_retains_output() {
             .is_some()
     );
     drop(leaked.lock().unwrap().take());
+    let events = log.events("leak", 0).await.unwrap();
+    assert!(events.iter().any(|event| matches!(
+        event.data(),
+        EventData::RunFault {
+            reason: crate::FaultKind::StateOwnership,
+            ..
+        }
+    )));
+    assert_eq!(
+        events.last().unwrap().data(),
+        &EventData::RunFailed { reason: None }
+    );
 }
 
 #[tokio::test]

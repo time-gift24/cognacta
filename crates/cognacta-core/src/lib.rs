@@ -6,30 +6,34 @@
 //! Recursive definitions use ordinary Arc/Weak/OnceLock bindings, resolved only at execution.
 //!
 //! ```
-//! use std::{collections::HashMap, sync::Arc};
+//! use std::sync::Arc;
 //! use cognacta_core::*;
-//! #[derive(Default, State)]
+//! #[derive(serde::Serialize, Default, State, serde::Deserialize)]
 //! struct Data { #[reducer(Override)] count: usize }
 //! struct Count;
 //! impl NodeInstance<Data> for Count {
 //!     type Output = usize;
 //!     async fn run(&self, input: &Input, _: NodeContext<Data>, _scheduler: Arc<dyn Scheduler>) -> Result<Outcome<Data, usize>, Error> {
-//!         let count = input.entry::<String>()?.len();
+//!         let count = (serde_json::from_value::<String>(input.entry()?.clone()).map_err(|source| cognacta_core::InputError::Decode { source })?).len();
 //!         Ok(Outcome { value: Some(Arc::new(count)), state_delta: DataDelta { count: Some(count) }, directive: None })
 //!     }
 //! }
 //! # #[tokio::main(flavor = "current_thread")]
 //! # async fn main() -> Result<(), Error> {
-//! let entry = NodeId::new("count");
-//! let graph = Graph::<Data, usize>::builder()
-//!     .nodes(vec![Node::new(entry.clone(), Count)])
-//!     .edges(vec![]).entries(vec![]).return_node(entry.clone()).build()?;
-//! let input = GraphInput::new(HashMap::from([(entry, Input::new(vec![Arc::new("hello".to_owned())]))]));
-//! let context = RunContext::root("root".into(), 4, Arc::new(()));
+//! let graph = graph! {
+//!     state: Data,
+//!     output: usize,
+//!     nodes { count: Count, }
+//!     return count;
+//! }?;
+//! let input = graph_input! { count: JsonValue::String("hello".to_owned()), };
+//! let log = Arc::new(InMemoryEventLog::new());
+//! let context = RunContext::root("root".into(), 4, Arc::new(())).with_event_log(log.clone());
 //! let scheduler: Arc<dyn Scheduler> = Arc::new(LocalScheduler::new(SchedulerConfig::new(1, 4)?));
 //! let run = scheduler.run(&graph, input, context).await?;
 //! assert_eq!(run.state().count, 5);
 //! assert_eq!(*run.into_result()?, 5);
+//! assert_eq!(log.events("root", 0).await?.last().unwrap().kind(), "run_completed");
 //! # Ok(())
 //! # }
 //! ```
@@ -38,28 +42,40 @@ extern crate self as cognacta_core;
 
 mod context;
 mod error;
+mod event_log;
 mod graph;
+mod history;
 mod input;
 mod run;
 mod scheduler;
 mod state;
 
-pub use cognacta_derive::State;
+pub use cognacta_derive::{State, graph, graph_input};
 pub use context::{RunContext, RunContextRootBuilder, run_context_root_builder};
 pub use error::{
     CallError, ConfigError, DirectiveError, Error, GraphError, InputError, MergeError, NodeError,
     RunError,
 };
+pub use event_log::{
+    CallSite, ChildCall, ControlFailureKind, Event, EventBuilder, EventData, EventLog,
+    EventLogError, Failure, FailureCause, FailureKind, FaultKind, HistoryError, HistoryViolation,
+    InMemoryEventLog, MergeFailureKind, NodeAttempt, RecordedOutcome, TerminalFailure, WaveStage,
+    event_builder, new_run_id,
+};
 pub use graph::{
     DirectiveTarget, Edge, Graph, GraphBuilder, GraphWithInitializerBuilder, Join, Node,
-    NodeContext, Outcome, graph_builder, graph_with_initializer_builder,
+    NodeCallBuilder, NodeContext, Outcome, graph_builder, graph_with_initializer_builder,
+    node_call_builder,
 };
-pub use input::{GraphInput, Input, Origin, SharedValue, SourceRef};
+pub use history::{History, ReplayedRun, replay};
+pub use input::{GraphInput, Input, InputEntry, Origin, SharedValue};
 pub use run::{NodeRun, NodeStatus, Run, RunStatus};
 pub use scheduler::{
     Execution, LocalScheduler, Scheduler, SchedulerConfig, SchedulerConfigBuilder,
-    SchedulerRunBuilder, scheduler_config_builder, scheduler_run_builder,
+    SchedulerResumeBuilder, SchedulerRunBuilder, scheduler_config_builder,
+    scheduler_resume_builder, scheduler_run_builder,
 };
+pub use serde_json::Value as JsonValue;
 pub use state::{Add, Append, Merge, Override, Reducer, Sort, State, StateField, WritePolicy};
 
 use std::{
@@ -67,7 +83,9 @@ use std::{
     sync::{Arc, OnceLock, Weak},
 };
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq, Ord, PartialOrd)]
+#[derive(
+    Clone, Debug, Eq, Hash, PartialEq, Ord, PartialOrd, serde::Serialize, serde::Deserialize,
+)]
 pub struct NodeId(String);
 
 impl NodeId {
@@ -80,33 +98,53 @@ impl NodeId {
     }
 }
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq, Ord, PartialOrd)]
+#[derive(
+    Clone, Debug, Eq, Hash, PartialEq, Ord, PartialOrd, serde::Serialize, serde::Deserialize,
+)]
 pub enum NodeKey {
     Static(NodeId),
     Instance { template: NodeId, key: String },
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Directive {
     Transition {
         target: NodeId,
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            deserialize_with = "crate::__private::deserialize_present"
+        )]
         payload: Option<SharedValue>,
         immediate: bool,
     },
     Deliver(Vec<DeliverTarget>),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DeliverTarget {
     pub template: NodeId,
     pub payload: SharedValue,
     pub key: String,
 }
 
+#[doc(hidden)]
+pub mod __private {
+    use serde::{Deserialize, Deserializer};
+
+    pub fn deserialize_present<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+    where
+        D: Deserializer<'de>,
+        T: Deserialize<'de>,
+    {
+        T::deserialize(deserializer).map(Some)
+    }
+}
+
 /// Reusable execution body of a Node. Graphs implement the same contract as leaf bodies.
 /// The runtime supplies the selected scheduler for this invocation; leaf bodies can ignore it.
 pub trait NodeInstance<S: State, R: Send + Sync + 'static = ()>: Send + Sync + 'static {
-    type Output: Send + Sync + 'static;
+    type Output: serde::Serialize + Send + Sync + 'static;
 
     fn run<'a>(
         &'a self,

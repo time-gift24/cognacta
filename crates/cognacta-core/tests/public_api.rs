@@ -2,11 +2,10 @@ use std::sync::Arc;
 
 use cognacta_core::{
     Edge, Error, Graph, GraphInput, Input, LocalScheduler, Node, NodeContext, NodeId, NodeInstance,
-    NodeKey, Origin, Outcome, RunContext, RunStatus, Scheduler, SchedulerConfig, SharedValue,
-    State,
+    NodeKey, Origin, Outcome, RunContext, RunStatus, Scheduler, SchedulerConfig, State,
 };
 
-#[derive(Default, State)]
+#[derive(serde::Serialize, Default, State, serde::Deserialize)]
 pub struct LengthState {
     #[reducer(cognacta_core::Override)]
     pub length: u32,
@@ -23,7 +22,9 @@ impl NodeInstance<LengthState> for Count {
         _ctx: NodeContext<LengthState>,
         _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<LengthState, Self::Output>, Error> {
-        let length = input.entry::<String>()?.len() as u32;
+        let length = (serde_json::from_value::<String>(input.entry()?.clone())
+            .map_err(|source| cognacta_core::InputError::Decode { source })?)
+        .len() as u32;
         Ok(Outcome {
             value: Some(Arc::new(length)),
             state_delta: LengthStateDelta {
@@ -45,8 +46,9 @@ impl NodeInstance<LengthState> for Render {
         ctx: NodeContext<LengthState>,
         _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<LengthState, Self::Output>, Error> {
-        let count = input.one::<u32>(&NodeId::new("count"))?;
-        assert_eq!((count, ctx.state.length), (&5, 5));
+        let count: u32 = serde_json::from_value(input.one(&NodeId::new("count"))?.clone())
+            .map_err(|source| cognacta_core::InputError::Decode { source })?;
+        assert_eq!((count, ctx.state.length), (5, 5));
         Ok(Outcome {
             value: Some(Arc::new(format!("len={count}"))),
             state_delta: LengthStateDelta::default(),
@@ -95,7 +97,7 @@ async fn downstream_executes_and_reuses_a_graph() {
             )
             .input(GraphInput::new(std::collections::HashMap::from([(
                 count.clone(),
-                Input::new(vec![Arc::new(String::from("hello")) as SharedValue]),
+                Input::new(vec![Arc::new(serde_json::json!("hello"))]),
             )])))
             .call()
             .await
@@ -110,12 +112,13 @@ async fn downstream_executes_and_reuses_a_graph() {
 }
 
 #[tokio::test]
-async fn selected_non_clone_output_is_shared_through_a_child_call() -> Result<(), Error> {
+async fn selected_non_clone_output_crosses_a_child_call_as_json() -> Result<(), Error> {
     use std::collections::HashMap;
 
+    #[derive(serde::Serialize, serde::Deserialize)]
     struct NonClone(u32);
     struct Emit<T>(Arc<T>);
-    impl<T: Send + Sync + 'static> NodeInstance<LengthState> for Emit<T> {
+    impl<T: serde::Serialize + Send + Sync + 'static> NodeInstance<LengthState> for Emit<T> {
         type Output = T;
         async fn run(
             &self,
@@ -140,14 +143,12 @@ async fn selected_non_clone_output_is_shared_through_a_child_call() -> Result<()
             _: NodeContext<LengthState>,
             _scheduler: Arc<dyn Scheduler>,
         ) -> Result<Outcome<LengthState, NonClone>, Error> {
-            assert_eq!(input.entry_origins().len(), 1);
-            assert_eq!(input.entry_origins()[0].origin, Origin::Run);
-            assert!(input.origins(&NodeId::new("source")).is_empty());
-            assert!(input.all::<String>()?.is_empty());
-            let value = input.entry_shared::<NonClone>()?;
-            assert!(std::ptr::eq(input.entry::<NonClone>()?, value.as_ref()));
+            assert_eq!(input.values().len(), 1);
+            assert_eq!(input.values()[0].origin, Origin::Run);
+            let value: NonClone = serde_json::from_value(input.entry()?.clone())
+                .map_err(|source| cognacta_core::InputError::Decode { source })?;
             Ok(Outcome {
-                value: Some(value),
+                value: Some(Arc::new(value)),
                 state_delta: Default::default(),
                 directive: None,
             })
@@ -164,17 +165,13 @@ async fn selected_non_clone_output_is_shared_through_a_child_call() -> Result<()
             _scheduler: Arc<dyn Scheduler>,
         ) -> Result<Outcome<LengthState, GraphInput>, Error> {
             assert_eq!(
-                input.one::<String>(&NodeId::new("unselected"))?,
-                "parent only"
+                input.one(&NodeId::new("unselected"))?,
+                &serde_json::json!("parent only")
             );
-            let value = input.one_shared::<NonClone>(&NodeId::new("source"))?;
-            assert!(std::ptr::eq(
-                input.one::<NonClone>(&NodeId::new("source"))?,
-                value.as_ref()
-            ));
+            let value = input.one_shared(&NodeId::new("source"))?;
             let child_input = GraphInput::new(HashMap::from([(
                 NodeId::new("receive"),
-                Input::new(vec![value.clone() as SharedValue]),
+                Input::new(vec![value.clone()]),
             )]));
             Ok(Outcome {
                 value: Some(Arc::new(child_input)),
@@ -238,17 +235,15 @@ async fn selected_non_clone_output_is_shared_through_a_child_call() -> Result<()
         .unwrap()
         .output()
         .unwrap()
-        .clone()
-        .downcast::<NonClone>()
-        .ok()
-        .unwrap();
-    assert!(Arc::ptr_eq(&value, &source_output));
+        .clone();
+    assert_eq!(source_output.as_ref(), &serde_json::json!(7));
     let output = run.into_result()?;
-    assert!(Arc::ptr_eq(&value, &output));
     assert_eq!(output.0, 7);
     Ok(())
 }
 
+#[path = "examples/macros.rs"]
+mod macros;
 #[path = "examples/nested.rs"]
 mod nested;
 #[path = "examples/recursive.rs"]

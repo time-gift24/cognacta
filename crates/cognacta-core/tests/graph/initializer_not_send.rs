@@ -1,5 +1,5 @@
 use cognacta_core::*;
-#[derive(State)]
+#[derive(serde::Serialize, State, serde::Deserialize)]
 struct Data { #[reducer(Override)] value: usize }
 fn main() {
     let _ = Graph::<Data, ()>::build_with_initializer(vec![], vec![], vec![], NodeId::new("entry"), |_, _| async {

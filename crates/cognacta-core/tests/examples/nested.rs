@@ -1,12 +1,12 @@
 use cognacta_core::*;
 use std::{collections::HashMap, sync::Arc};
 
-#[derive(Default, State)]
+#[derive(serde::Serialize, Default, State, serde::Deserialize)]
 struct ChildState {
     #[reducer(Override)]
     length: usize,
 }
-#[derive(Default, State)]
+#[derive(serde::Serialize, Default, State, serde::Deserialize)]
 struct ParentState {
     #[reducer(Override)]
     last_length: usize,
@@ -28,7 +28,11 @@ impl NodeInstance<ChildState, CounterResources> for Count {
         ctx: NodeContext<ChildState, CounterResources>,
         _: Arc<dyn Scheduler>,
     ) -> Result<Outcome<ChildState, usize>, Error> {
-        let length = input.entry::<String>()?.chars().count() + ctx.run.resources().offset;
+        let length = (serde_json::from_value::<String>(input.entry()?.clone())
+            .map_err(|source| cognacta_core::InputError::Decode { source })?)
+        .chars()
+        .count()
+            + ctx.run.resources().offset;
         Ok(Outcome {
             value: Some(Arc::new(length)),
             state_delta: ChildStateDelta {
@@ -47,7 +51,7 @@ impl NodeInstance<ParentState, ParentResources> for Prepare {
         _: NodeContext<ParentState, ParentResources>,
         _: Arc<dyn Scheduler>,
     ) -> Result<Outcome<ParentState, GraphInput>, Error> {
-        let value = input.entry_shared::<String>()?;
+        let value = input.entry_shared()?;
         let input = GraphInput::new(HashMap::from([(
             NodeId::new("count"),
             Input::new(vec![value]),
@@ -68,12 +72,13 @@ impl NodeInstance<ParentState, ParentResources> for Report {
         _: NodeContext<ParentState, ParentResources>,
         _: Arc<dyn Scheduler>,
     ) -> Result<Outcome<ParentState, usize>, Error> {
-        let value = input.one_shared::<usize>(&NodeId::new("child"))?;
+        let value: usize = serde_json::from_value(input.one(&NodeId::new("child"))?.clone())
+            .map_err(|source| InputError::Decode { source })?;
         Ok(Outcome {
             state_delta: ParentStateDelta {
-                last_length: Some(*value),
+                last_length: Some(value),
             },
-            value: Some(value),
+            value: Some(Arc::new(value)),
             directive: None,
         })
     }
@@ -114,7 +119,7 @@ async fn public_example() -> Result<(), Error> {
         .build()?;
     let input = GraphInput::new(HashMap::from([(
         NodeId::new("prepare"),
-        Input::new(vec![Arc::new("hello".to_owned())]),
+        Input::new(vec![Arc::new(serde_json::json!("hello"))]),
     )]));
     let run = scheduler
         .run_builder()

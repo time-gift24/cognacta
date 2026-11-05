@@ -6,6 +6,15 @@
 
 ## Requirements
 
+### Requirement: State and raw updates can be reconstructed
+
+State、State::Delta 及 Reducer::Delta SHALL 实现 Serialize 与 DeserializeOwned，以重建 RunInitialized 和 NodeCompleted 中的原始增量。derive SHALL 通过 reducer 的关联类型契约生成 Delta 的 Serde 实现，不推测泛型参数约束；State／Delta／Output SHALL 不被要求 Clone，Delta SHALL 不被要求 Sync。
+
+#### Scenario: Recorded non-Sync updates are applied after recovery
+
+- **WHEN** Cell<u32> 作为 reducer Delta 已进入 NodeCompleted，但 StateDelta 尚未记录
+- **THEN** 恢复 SHALL 解码并移动该 Delta，在同一 apply 中归并一次，不重复执行已完成节点。
+
 ### Requirement: Derive produces typed updates and reachable metadata
 
 State derive SHALL 为具名字段struct生成同可见性的Delta、Field及State实现，保留所需泛型约束。每字段 SHALL 恰有一个reducer属性；Delta字段 SHALL 为Option<Reducer::Delta>，Default SHALL 逐字段None而不要求内层Delta Default。公开State的关联类型和必要字段 SHALL 对调用方可达。
@@ -113,3 +122,22 @@ Node.writes SHALL 声明可能写入的强类型字段。Graph SHALL 对可确�
 
 - **WHEN** entries 为 a、b，边为 a→b 与 a→c，只有 b/c 声明写入同一 SingleWriter 字段
 - **THEN** b 属于首 wave，c 属于后续 wave，构图接受串行写入；若 a/b 同时声明写入该字段，则构图拒绝冲突，不因 a→b 将 b 推迟分层
+
+### Requirement: JSON Delta fields preserve update presence
+
+State derive 生成的 Delta SHALL 使用标准 Serde 对象，外层 Option 的 None 通过省略字段表示。反序列化时，缺省字段 SHALL 为 None；出现的字段 SHALL 解析为 Some(Reducer::Delta)，包括该 Delta 类型允许的 null。仅添加 skip_serializing_if SHALL 不视为满足此契约。业务 State 与 reducer 的原子归并、顺序和 Send／Clone 约束 SHALL 保持不变。
+
+#### Scenario: No update survives JSON roundtrip
+
+- **WHEN** title: Option<String> 使用 Override，Delta.title=None
+- **THEN** SHALL 序列化为不含 title 的对象，恢复为 None，应用后保留旧 title。
+
+#### Scenario: An explicit clear survives JSON roundtrip
+
+- **WHEN** Delta.title=Some(None)
+- **THEN** SHALL 序列化为含 `"title": null` 的对象，恢复为 Some(None)，应用后清空旧 title。
+
+#### Scenario: Only Send deltas remain supported
+
+- **WHEN** 可 Serde 的 Cell<u32> 为实际 reducer Delta，输出类型没有 Clone
+- **THEN** JSON 记录与恢复 SHALL 不添加 Delta: Sync 或业务类型 Clone 约束，原子 merge_batch 契约保持不变。

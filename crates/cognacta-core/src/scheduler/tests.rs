@@ -5,7 +5,7 @@ use crate::{
 };
 use crate::{GraphInput, RunContext};
 
-#[derive(Default, State)]
+#[derive(serde::Serialize, Default, State, serde::Deserialize)]
 struct TestState {
     #[reducer(Append)]
     order: Vec<NodeKey>,
@@ -57,7 +57,7 @@ async fn instances_settle_in_creation_order_across_templates() {
         .map(|template| DeliverTarget {
             template: NodeId::new(template),
             key: "one".into(),
-            payload: Arc::new(()),
+            payload: Arc::new(serde_json::Value::Null),
         })
         .to_vec();
     let graph = Graph::<_, NodeKey>::build(

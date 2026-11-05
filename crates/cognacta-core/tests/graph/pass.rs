@@ -1,7 +1,8 @@
 use std::sync::Arc;
 use cognacta_core::*;
-#[derive(State)]
+#[derive(serde::Serialize, State, serde::Deserialize)]
 struct Data { #[reducer(Override)] value: usize }
+#[derive(serde::Serialize, serde::Deserialize)]
 struct NonClone;
 struct Task;
 impl NodeInstance<Data> for Task {

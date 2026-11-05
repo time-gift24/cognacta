@@ -1,6 +1,8 @@
 use std::{collections::HashMap, sync::Arc};
 
-use crate::{Graph, Input, NodeId, NodeKey, RunContext, RunError, SharedValue, State};
+use crate::{
+    Failure, FailureCause, Input, NodeId, NodeKey, RunError, SharedValue, State, TerminalFailure,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NodeStatus {
@@ -19,7 +21,7 @@ pub enum RunStatus {
     Failed,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct NodeRun {
     pub(crate) input: Option<Arc<Input>>,
     pub(crate) output: Option<SharedValue>,
@@ -84,10 +86,11 @@ impl NodeRun {
 /// Completed initialization and retained execution diagnostics, without scheduler resources.
 pub struct Run<S: State, O> {
     pub(crate) state: Arc<S>,
-    status: RunStatus,
+    pub(crate) status: RunStatus,
     pub(crate) nodes: HashMap<NodeKey, NodeRun>,
     pub(crate) instances: HashMap<NodeId, Vec<NodeKey>>,
     pub(crate) errors: Vec<RunError>,
+    pub(crate) failures: Vec<Failure>,
     pub(crate) final_output: Option<Arc<O>>,
     pub(crate) waves: usize,
     pub(crate) run_id: String,
@@ -98,65 +101,6 @@ pub struct Run<S: State, O> {
 }
 
 impl<S: State, O: Send + Sync + 'static> Run<S, O> {
-    pub(crate) fn new<R: Send + Sync + 'static>(
-        graph: &Graph<S, O, R>,
-        context: &RunContext<R>,
-        state: S,
-    ) -> Self {
-        Self {
-            state: Arc::new(state),
-            status: RunStatus::Running,
-            nodes: graph
-                .nodes
-                .iter()
-                .filter(|node| !node.template)
-                .map(|node| (NodeKey::Static(node.id.clone()), NodeRun::pending()))
-                .collect(),
-            instances: HashMap::new(),
-            errors: Vec::new(),
-            final_output: None,
-            waves: 0,
-            run_id: context.run_id().to_owned(),
-            parent_run_id: context.parent_run_id().map(str::to_owned),
-            parent_node: context.parent_node().cloned(),
-            depth: context.depth(),
-            max_depth: context.max_depth(),
-        }
-    }
-
-    pub(crate) fn finish(&mut self, return_node: &NodeId) {
-        if self.errors.is_empty() {
-            let terminal = self.nodes.values().all(|node| {
-                matches!(
-                    node.status(),
-                    NodeStatus::Completed | NodeStatus::Skipped | NodeStatus::Failed
-                )
-            });
-            if !terminal {
-                self.errors.push(RunError::Stalled);
-            } else {
-                self.final_output = self.nodes[&NodeKey::Static(return_node.clone())]
-                    .output
-                    .clone()
-                    .map(|value| {
-                        value
-                            .downcast::<O>()
-                            .expect("return type validated at construction")
-                    });
-                if self.final_output.is_none() {
-                    self.errors.push(RunError::MissingOutput {
-                        node: return_node.clone(),
-                    });
-                }
-            }
-        }
-        self.status = if self.errors.is_empty() {
-            RunStatus::Completed
-        } else {
-            RunStatus::Failed
-        };
-    }
-
     pub fn state(&self) -> &S {
         &self.state
     }
@@ -171,6 +115,10 @@ impl<S: State, O: Send + Sync + 'static> Run<S, O> {
 
     pub fn instances(&self, template: &NodeId) -> &[NodeKey] {
         self.instances.get(template).map_or(&[], Vec::as_slice)
+    }
+
+    pub fn failures(&self) -> &[Failure] {
+        &self.failures
     }
 
     pub fn errors(&self) -> &[RunError] {
@@ -203,29 +151,41 @@ impl<S: State, O: Send + Sync + 'static> Run<S, O> {
 
     /// Consumes diagnostics and returns the original result Arc or a stable call error.
     pub fn into_result(self) -> Result<Arc<O>, crate::Error> {
-        if let [RunError::MissingOutput { .. }] = self.errors.as_slice() {
+        if let [
+            Failure {
+                cause: FailureCause::Terminal(TerminalFailure::MissingOutput { .. }),
+                ..
+            },
+        ] = self.failures.as_slice()
+        {
             return Err(crate::CallError::MissingOutput.into());
         }
         if self.status == RunStatus::Completed {
             return Ok(self.final_output.expect("completed run has a typed return"));
         }
         Err(crate::CallError::Execution {
-            source: Box::new(ExecutionErrors(self.errors)),
+            source: Box::new(ExecutionErrors {
+                failures: self.failures,
+                diagnostics: self.errors,
+            }),
         }
         .into())
     }
 }
 
 #[derive(Debug, thiserror::Error)]
-#[error("graph execution failed with {} errors", .0.len())]
-struct ExecutionErrors(Vec<RunError>);
+#[error("graph execution failed with {} errors", .failures.len())]
+struct ExecutionErrors {
+    failures: Vec<Failure>,
+    diagnostics: Vec<RunError>,
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::*;
 
-    #[derive(Default, State)]
+    #[derive(serde::Serialize, Default, State, serde::Deserialize)]
     struct Empty {}
     struct Fail(&'static str);
     impl NodeInstance<Empty> for Fail {
@@ -271,7 +231,10 @@ mod tests {
         let Error::Call(CallError::Execution { source }) = run.into_result().unwrap_err() else {
             panic!("wrong error category")
         };
-        let errors = &source.downcast_ref::<ExecutionErrors>().unwrap().0;
+        let errors = &source
+            .downcast_ref::<ExecutionErrors>()
+            .unwrap()
+            .diagnostics;
         assert_eq!(errors.len(), 2);
         for (error, (id, message)) in errors.iter().zip([("first", "one"), ("second", "two")]) {
             let RunError::Node {

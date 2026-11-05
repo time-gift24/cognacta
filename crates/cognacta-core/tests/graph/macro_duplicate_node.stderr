@@ -1,0 +1,5 @@
+error: duplicate graph node `entry`
+  --> tests/graph/macro_duplicate_node.rs:29:13
+   |
+29 |             entry: Task,
+   |             ^^^^^

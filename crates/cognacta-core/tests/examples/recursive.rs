@@ -4,7 +4,7 @@ use std::{
     sync::{Arc, Mutex, OnceLock, Weak},
 };
 
-#[derive(Default, State)]
+#[derive(serde::Serialize, Default, State, serde::Deserialize)]
 struct Data {}
 type RecursiveGraph = Graph<Data, (), Resources>;
 #[derive(Default)]

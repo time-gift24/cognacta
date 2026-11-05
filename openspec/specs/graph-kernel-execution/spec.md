@@ -52,24 +52,24 @@ Graph 的默认与自定义初始化构造函数及 bon builder SHALL 经过同�
 - **WHEN** Node::new 接收尚未绑定目标的 OnceLock/Weak 执行体并构建 Graph
 - **THEN** 只验证节点声明、边与输出类型，不解析目标、执行初始化或递归展开调用关系；具体绑定在实际节点执行时解析
 
-### Requirement: Input preserves type and real origin
+### Requirement: Input preserves JSON values and real origin
 
-Input SHALL 用 TypeId 索引唯一的真实值存储，以 NodeId 来源索引及独立 entry 保存 SourceRef。外部值 SHALL 使用 Origin::Run，普通值和实例值 SHALL 使用真实 NodeKey。entry/one SHALL 要求过滤后恰好一值；many/all SHALL 允许空值。访问失败 SHALL 返回 Error::Input，并保留数量/类型分类。
+Input SHALL 保存有序的 JSON SharedValue 与真实 Origin，不按 TypeId 索引或过滤。外部值 SHALL 使用 Origin::Run，普通和实例值 SHALL 使用真实 NodeKey；entry／one SHALL 按来源选择恰好一个值，many SHALL 返回来源下全部 JSON 并允许空列表，values SHALL 暴露完整有序来源和值。业务转换 SHALL 在节点入口使用标准 Serde，数量错误和转换错误 SHALL 分别属于 InputError::Cardinality 和 Decode。
 
-#### Scenario: External and node values have the same type
+#### Scenario: External and node values have the same JSON shape
 
-- **WHEN** 一个 entry 节点同时收到 String 外部值与合格 String 前驱输出
-- **THEN** entry<String> 只读取外部值，one<String>(前驱) 只读取该来源，all<String> 按规则包含两份；不创建虚拟 NodeId
+- **WHEN** 入口同时有外部字符串 JSON 与一个合格前驱字符串 JSON
+- **THEN** entry 只读取外部值，one(前驱) 只读取该来源，values 保留两份及真实来源；不创建虚拟 NodeId 或类型 key。
 
 #### Scenario: Multiple instances share one source
 
-- **WHEN** template T 的两个实例各产生 Finding
-- **THEN** many<Finding>(T) 按创建顺序返回两份，one<Finding>(T) 返回 Cardinality，origins(T) 可区分两个 Instance
+- **WHEN** template T 的两个实例各产生一份 JSON
+- **THEN** many(T) 按创建顺序返回两份，one(T) 返回 Cardinality；values 中的 Origin 区分各 Instance，不按解码类型筛选。
 
-#### Scenario: Output is not cloneable
+#### Scenario: Business schema fails at the consumer
 
-- **WHEN** 一个非 Clone 的 Output 经普通边或 template 扇入传递
-- **THEN** Input 与 NodeRun 共享底层 Arc 值，业务读取不需要复制该 Output
+- **WHEN** 输入来源及数量正确，但节点无法将值解析成业务类型
+- **THEN** SHALL 返回 InputError::Decode，保留 Serde source，并按节点失败记录；replay 不重新调用该节点的业务反序列化代码。
 
 ### Requirement: Input assembly follows eligible edges and explicit payloads
 
@@ -134,7 +134,7 @@ template 定义 SHALL 无静态 NodeRun。每条 live template 边 SHALL 计一�
 
 ### Requirement: A wave is fixed while concurrency slots refill
 
-每个 wave SHALL 固定一个 ready Vec；K SHALL 仅限制同时运行 task 数量。排队成员 SHALL 保持 Pending/attempts不变，调度器取得本 Run 名额并调用 dispatch 提交实际任务时才 Running/attempts+1。完成腾出槽位后 SHALL 继续同 wave 成员，即使已收到错误；新 ready SHALL 不插入当前 wave。
+每个 wave SHALL 固定一个 ready Vec；K SHALL 仅限制同时运行 task 数量。排队成员 SHALL 保持 Pending/attempts不变，调度器取得本 Run 名额并实际 poll dispatch 返回的任务、成功追加 NodeStarted 后，才由共享 apply 置 Running/attempts+1；首条 NodeStarted 同时记录完整有序 wave 成员并增加 waves。完成腾出槽位后 SHALL 继续同 wave 成员，即使已收到错误；新 ready SHALL 不插入当前 wave。
 
 #### Scenario: Failure does not cancel queued members
 
@@ -281,7 +281,7 @@ GraphInput SHALL 以 NodeId 映射 Input，提供公开构造和只读 entry 查
 #### Scenario: Empty input is judged by the entry node
 
 - **WHEN** 调用显式提供入口的空 Input
-- **THEN** 键集合校验通过；无需值的节点可以成功，要求 entry<T> 的节点按既有数量错误失败；省略该入口的键仍为启动错误
+- **THEN** 键集合校验通过；无需值的节点可以成功，要求 `entry()` 的节点按既有数量错误失败；省略该入口的键仍为启动错误
 
 #### Scenario: Reading an absent entry preserves its input error
 
@@ -290,25 +290,25 @@ GraphInput SHALL 以 NodeId 映射 Input，提供公开构造和只读 entry 查
 
 ### Requirement: Explicit call input resets entry origins
 
-Input::new SHALL 用显式业务值构造 Origin::Run 入口，允许空 Vec。GraphInput 构造 SHALL 共享已有业务值 Arc 并按值顺序重建本次调用的入口来源，不沿用父图 NodeKey 来源或自动附加父输入。图内普通边、Transition payload 与 Deliver payload SHALL 保持既有来源及覆盖规则。
+Input::new SHALL 用显式 JSON 值构造 Origin::Run 入口，允许空 Vec。GraphInput 构造 SHALL 共享已有 Arc<JsonValue> 并按值顺序重建本次调用的入口来源，不沿用父图 NodeKey 来源或自动附加父输入。图内普通边、Transition payload 与 Deliver payload SHALL 保持既有来源及覆盖规则。
 
 #### Scenario: A parent forwards only selected values
 
-- **WHEN** 父节点从自身输入选择一份业务值组装子图 GraphInput
-- **THEN** 子入口只读取该值且来源为 Origin::Run，不出现父节点来源索引或父输入的其他值；业务值无需深复制
+- **WHEN** 父节点从自身输入选择一份 JSON 值组装子图 GraphInput
+- **THEN** 子入口只读取该值且来源为 Origin::Run，不出现父节点来源索引或父输入的其他值；现有 JSON Arc 可共享，恢复后不承诺原指针身份
 
-### Requirement: Node outputs share the business value Arc
+### Requirement: Node outputs cross boundaries as JSON
 
-NodeInstance::Output SHALL 仍为业务类型 O，Outcome<S, O>.value SHALL 统一为 Option<Arc<O>>。节点记录、普通边输入、类型化图返回和父节点直接转发 SHALL 共享原 Arc，不额外包装 Arc，也不要求 O: Clone。普通非返回节点的 None SHALL 继续表示无输出。
+NodeInstance::Output SHALL 保留业务 O，Outcome<S, O>.value SHALL 保持 Option<Arc<O>>，不要求 O: Clone。适配器 SHALL 将 Some(O) 用 serde_json::to_value 转为 JSON 后记录，NodeRun、普通边和实例输入 SHALL 保存 JSON SharedValue。None SHALL 表示无输出，显式 null SHALL 保留存在性；框架 SHALL 不保证原业务 Arc 在这些位置的指针身份。
 
 #### Scenario: A non-cloneable child result is forwarded
 
-- **WHEN** 子图返回非 Clone 的业务值，Graph 的 NodeInstance 实现把子 Run.into_result 的结果直接放入本节点 Outcome.value
-- **THEN** 子结果、父节点记录和父最终输出指向同一业务对象，Output 的类型仍为 O 而非 Arc<O>；原有 Input 读取能够按 O 访问
+- **WHEN** 子图 O 不实现 Clone，Graph 的 NodeInstance 适配把子返回值作为自己的 Outcome.value
+- **THEN** SHALL 用普通出口 Serde 转为父节点 JSON 结果；消费者自行解码，不注册 O，不要求业务 Clone 或原 Arc 身份。
 
 ### Requirement: Final output is the declared typed return
 
-Run<S, O>.final_output SHALL 仅在整图 Completed 时为 Some(&Arc<O>)，Run.into_result SHALL 消费成功 Run 并交付同一 Arc。返回节点提前完成 SHALL 不终止整图；返回值 SHALL 来自该节点当前有效的完成结果。其他阶段均成功而返回节点被跳过或无值时，Run SHALL Failed 并记录 MissingOutput，不能用空映射或外层可空结果表示成功。
+Run<S, O>.final_output SHALL 仅在整图 Completed 时为 Some(&Arc<O>)，Run.into_result SHALL 消费成功 Run 并交付同一 Arc。返回节点提前完成 SHALL 不终止整图；返回值 SHALL 来自该节点当前有效的 JSON 完成结果。最终 O SHALL 满足 DeserializeOwned，并在 RunCompleted 的统一准备入口通过静态泛型解码一次，append 后 apply 安装返回投影；不需要注册表，不保证与节点原业务 Arc 相同。解码失败 SHALL 返回 EventLogError::Decode 且不追加 RunCompleted。其他阶段均成功而返回节点被跳过或无值时，Run SHALL Failed 并记录 MissingOutput，不能用空映射或外层可空结果表示成功。
 
 #### Scenario: An early return does not hide later failures
 
@@ -374,7 +374,7 @@ RunContext SHALL 通过构造入口封装身份和预算，提供只读 getter�
 
 ### Requirement: Subgraphs follow ordinary node instantiation rules
 
-Graph<C, O, R> SHALL 对任意父状态 P: State 直接实现 NodeInstance<P, R, Output = O>，通过 Node::new(id, graph) 声明，遵守普通静态/template、Deliver、Transition、join 和 wave 规则。图执行体 SHALL 从 Input 的所有实际来源中取得恰好一个 GraphInput 类型的值，派生子身份，以传入的同一 Scheduler 执行并交付原 Arc<O>；父 Delta 为默认值且无 Directive。不得新增子图专属类型、构造器或运行时按子图类型分支。父子及同图不同 Run SHALL 隔离 State、输入、节点记录和实例集合，不隐式共享父 Run 数据。图及节点执行体 SHALL 沿用既有复用方式，不增加子图节点工厂、克隆或重建协议。
+Graph<C, O, R> SHALL 对任意父状态 P: State 直接实现 NodeInstance<P, R, Output = O>，通过 Node::new(id, graph) 声明，遵守普通静态/template、Deliver、Transition、join 和 wave 规则。图执行体 SHALL 从 Input 的所有实际来源中取得恰好一个 JSON 值并通过标准 Serde 转为 GraphInput，派生子身份，以传入的同一 Scheduler 执行并交付从记录 JSON 恢复的 Arc<O>，最终 O 增加 DeserializeOwned；父 Delta 为默认值且无 Directive。不得新增子图专属类型、构造器或运行时按子图类型分支。父子及同图不同 Run SHALL 隔离 State、输入、节点记录和实例集合，不隐式共享父 Run 数据。图及节点执行体 SHALL 沿用既有复用方式，不增加子图节点工厂、克隆或重建协议。
 
 #### Scenario: Template instances invoke the same graph independently
 
@@ -389,12 +389,12 @@ Graph<C, O, R> SHALL 对任意父状态 P: State 直接实现 NodeInstance<P, R,
 #### Scenario: Deliver and Transition use the same graph implementation
 
 - **WHEN** Deliver 将 GraphInput payload 发给 template 图 Node，或 Transition 将其发给普通图 Node
-- **THEN** 使用同一 NodeInstance 实现和既有来源/路由规则，每次图调用新建普通 Run；重激活不交付旧结果
+- **THEN** 使用同一 NodeInstance 实现和既有来源/路由规则，新逻辑调用使用新 Run；恢复原 attempt 与 call key 时接回原 Run，重激活不交付旧 attempt 的结果
 
 #### Scenario: A graph node checks its input contract
 
-- **WHEN** Input 的 entry 或前驱/路由来源中含零个或多个 GraphInput 类型的值
-- **THEN** 按既有 InputError 类型/数量分类失败，子初始化未开始；恰有一个则共享其 Arc，其他类型不自动转发，子入口键集合只在共用 run 入口校验一次
+- **WHEN** Input 的所有来源合计零个或多个 JSON 值，或者唯一值不能反序列化为 GraphInput
+- **THEN** 按 InputError::Cardinality 或 Decode 失败，子初始化未开始；不按“能否解析成 GraphInput”过滤其他输入。唯一有效值进入普通 call，子入口键集合只在共用 run 入口校验一次
 
 ### Requirement: Concurrency limits are independent per run
 
@@ -483,7 +483,7 @@ Run 执行 future 首次 poll 时 SHALL 在入口校验和初始化前建立 tra
 
 ### Requirement: Dropped futures and panics have different observation outcomes
 
-未 poll 的执行 future SHALL 不记录开始或取消。已经开始而正常 drop 的 future SHALL 仅记录一次 DEBUG 本地取消，表示本地停止观察，不新增 Run 状态或停止结果。panic unwind SHALL 不误报普通取消或伪造完成/业务失败；已有任务边界把节点 panic 转为执行错误时 SHALL 正常结算一次失败。本次 SHALL 不增加 panic 恢复或 interrupt/resume 协议。
+未 poll 的执行 future SHALL 不记录开始或取消。已经开始而正常 drop 的 future SHALL 仅记录一次 DEBUG 本地取消，表示本地停止观察，不新增 Run 状态或停止结果。panic unwind SHALL 不误报普通取消或伪造完成/业务失败；已有任务边界把节点 panic 转为执行错误时 SHALL 正常结算一次失败。遥测取消 SHALL 不改写业务历史；业务继续执行遵守 event-log-recovery 规格，不把遥测结束当作 Run 终态。
 
 #### Scenario: Unpolled and normally dropped futures differ
 
@@ -583,7 +583,7 @@ core SHALL 为 Arc<N>、Weak<N>、OnceLock<N> 提供通用 NodeInstance 转发�
 #### Scenario: Three and five levels use the same path
 
 - **WHEN** 同一参数化组图方式分别构造三层和五层，覆盖 K=1、K=2、静态边和 Deliver，并使用本地及替代 Scheduler
-- **THEN** 每层经过同一入口与所选 drive，身份、输入、State、NodeRun 和实例集合独立；深度逐层增加，重复内部 NodeId/key 不冲突，非 Clone 返回值共享原 Arc
+- **THEN** 每层经过同一入口与所选 drive，身份、输入、State、NodeRun 和实例集合独立；深度逐层增加，重复内部 NodeId/key 不冲突，非 Clone 返回值可经 Serde 传递，跨层无类型登记或按深度区分的编码路径
 
 #### Scenario: An inner failure uses the same state machine
 
@@ -592,7 +592,7 @@ core SHALL 为 Arc<N>、Weak<N>、OnceLock<N> 提供通用 NodeInstance 转发�
 
 ### Requirement: Run state transitions have one shared owner
 
-Run/NodeRun SHALL 通过集中内部方法完成既有状态转换，各 Scheduler 后端和嵌套层 SHALL 使用这些相同方法，不直接改写状态字段。Run SHALL 在驱动结束后按全部诊断与返回值一次性进入 Completed 或 Failed，终态不再变化；NodeRun 的 barrier 结算与 Transition 重激活仍遵守原规则。本变更 SHALL 不增加 Run 状态、事件存储、恢复或暂停协议。
+Run/NodeRun、State、路由及动态实例 SHALL 仅由 append 后的共享 apply 修改；replay SHALL 调用相同入口。所有 Scheduler 后端和嵌套层 SHALL 使用该投影，不直接归并或重激活节点。NodeCompleted SHALL 提前保存完整结果，StateDelta SHALL 原子归并，Control SHALL 批量校验控制并关闭 wave。Run SHALL 依据可重建的稳定失败与返回值，通过 RunCompleted／RunFailed 一次性进入终态，原始诊断 source 不决定业务结论。恢复 Running 节点 SHALL 重新进入同一逻辑 attempt，不直接 rearm。完整协议见 event-log-recovery 规格。
 
 #### Scenario: Missing output never passes through Completed
 

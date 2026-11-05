@@ -49,6 +49,92 @@ pub struct NodeContext<S: State, R = ()> {
     pub key: NodeKey,
 }
 
+#[bon]
+impl<P: State, R: Send + Sync + 'static> NodeContext<P, R> {
+    /// Names a Graph-as-Node call made by a generic node wrapper without creating a Run.
+    pub fn with_call_key(&self, key: impl Into<String>) -> Result<Self, Error> {
+        let key = key.into();
+        if key.is_empty() || key.starts_with('@') {
+            return Err(self
+                .run
+                .gate
+                .fail(crate::HistoryError::InvalidCallKey { key }.into()));
+        }
+        let mut run = self.run.clone();
+        run.call_key = Some(key);
+        Ok(Self {
+            state: self.state.clone(),
+            run,
+            key: self.key.clone(),
+        })
+    }
+
+    /// Calls a reusable Graph using a stable key within this logical node attempt.
+    #[builder(start_fn = call_builder, finish_fn = call, builder_type = NodeCallBuilder, state_mod(vis = "pub"))]
+    pub fn call<'a, C, O, T>(
+        &'a self,
+        key: impl Into<String> + Send + 'a,
+        graph: &'a Graph<C, O, T>,
+        input: impl Into<Arc<GraphInput>> + Send + 'a,
+        resources: Arc<T>,
+        scheduler: Arc<dyn Scheduler>,
+    ) -> Pin<Box<dyn Future<Output = Result<Arc<O>, Error>> + Send + 'a>>
+    where
+        C: State,
+        O: serde::Serialize + serde::de::DeserializeOwned + Send + Sync + 'static,
+        T: Send + Sync + 'static,
+    {
+        Box::pin(async move {
+            let key = key.into();
+            if key.is_empty() || key.starts_with('@') {
+                return Err(self
+                    .run
+                    .gate
+                    .fail(crate::HistoryError::InvalidCallKey { key }.into()));
+            }
+            self.call_inner(key, graph, input.into(), resources, scheduler)
+                .await
+        })
+    }
+
+    fn call_inner<'a, C, O, T>(
+        &'a self,
+        key: String,
+        graph: &'a Graph<C, O, T>,
+        input: Arc<GraphInput>,
+        resources: Arc<T>,
+        scheduler: Arc<dyn Scheduler>,
+    ) -> Pin<Box<dyn Future<Output = Result<Arc<O>, Error>> + Send + 'a>>
+    where
+        C: State,
+        O: serde::Serialize + serde::de::DeserializeOwned + Send + Sync + 'static,
+        T: Send + Sync + 'static,
+    {
+        Box::pin(async move {
+            self.run.gate.check()?;
+            if self.run.depth() >= self.run.max_depth() {
+                crate::scheduler::observation::depth_rejected(&self.run, &self.key);
+                return Err(crate::CallError::DepthExceeded {
+                    parent_depth: self.run.depth(),
+                    max_depth: self.run.max_depth(),
+                }
+                .into());
+            }
+            let host = self
+                .run
+                .node_calls
+                .as_ref()
+                .ok_or(crate::HistoryError::CallContext)?;
+            let (call, input) = host.link(key, input).await?;
+            let child = self.run.with_resources(resources).for_child(&call);
+            scheduler
+                .child(graph, input, child, call)
+                .await?
+                .into_result()
+        })
+    }
+}
+
 type ErasedFuture<'a, S> =
     Pin<Box<dyn Future<Output = Result<ErasedOutcome<S>, Error>> + Send + 'a>>;
 
@@ -78,7 +164,16 @@ where
         Box::pin(async move {
             let outcome = self.0.run(input, ctx, scheduler).await?;
             Ok(ErasedOutcome {
-                value: outcome.value.map(|value| value as SharedValue),
+                value: outcome
+                    .value
+                    .map(|value| {
+                        serde_json::to_value(value.as_ref())
+                            .map(Arc::new)
+                            .map_err(|source| crate::EventLogError::Encode {
+                                source: Box::new(source),
+                            })
+                    })
+                    .transpose()?,
                 state_delta: outcome.state_delta,
                 directive: outcome.directive,
             })
@@ -121,8 +216,8 @@ pub struct Node<S: State, R = ()> {
     pub(crate) instance: Arc<dyn ErasedNode<S, R>>,
     pub(crate) join: Join,
     pub(crate) template: bool,
-    output_type: TypeId,
-    output_name: &'static str,
+    pub(crate) output_type: TypeId,
+    pub(crate) output_name: &'static str,
     pub(crate) writes: Vec<S::Field>,
     pub(crate) declared_targets: Vec<DirectiveTarget>,
 }
@@ -187,7 +282,7 @@ impl<P, C, O, R> NodeInstance<P, R> for Graph<C, O, R>
 where
     P: State,
     C: State,
-    O: Send + Sync + 'static,
+    O: serde::Serialize + serde::de::DeserializeOwned + Send + Sync + 'static,
     R: Send + Sync + 'static,
 {
     type Output = O;
@@ -198,11 +293,22 @@ where
         ctx: NodeContext<P, R>,
         scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<P, O>, Error> {
-        let input = input.single_shared::<GraphInput>()?;
-        let child = ctx.run.child(&ctx.key).inspect_err(|_| {
-            crate::scheduler::observation::depth_rejected(&ctx.run, &ctx.key);
-        })?;
-        let value = scheduler.run(self, input, child).await?.into_result()?;
+        if input.values().len() != 1 {
+            return Err(crate::InputError::Cardinality {
+                operation: "single",
+                source_node: None,
+                actual: input.values().len(),
+            }
+            .into());
+        }
+        let input = Arc::new(
+            serde_json::from_value(input.values()[0].value.as_ref().clone())
+                .map_err(|source| crate::InputError::Decode { source })?,
+        );
+        let key = ctx.run.call_key.clone().unwrap_or_else(|| "@graph".into());
+        let value = ctx
+            .call_inner(key, self, input, ctx.run.resources().clone(), scheduler)
+            .await?;
         Ok(Outcome {
             value: Some(value),
             state_delta: Default::default(),

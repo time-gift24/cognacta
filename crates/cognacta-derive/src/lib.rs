@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+mod construction;
+
 use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::{format_ident, quote};
@@ -80,6 +82,26 @@ impl VisitMut for StateSelf {
     }
 }
 
+/// Builds a Graph from node identifiers, ordinary node instances, edges and a return node.
+#[proc_macro]
+pub fn graph(input: TokenStream) -> TokenStream {
+    syn::parse(input)
+        .map_err(Error::from)
+        .and_then(construction::expand_graph)
+        .unwrap_or_else(Error::into_compile_error)
+        .into()
+}
+
+/// Builds GraphInput from ordinary values, existing Arc handles, multiple values or empty inputs.
+#[proc_macro]
+pub fn graph_input(input: TokenStream) -> TokenStream {
+    syn::parse(input)
+        .map_err(Error::from)
+        .and_then(construction::expand_graph_input)
+        .unwrap_or_else(Error::into_compile_error)
+        .into()
+}
+
 #[proc_macro_derive(State, attributes(reducer))]
 pub fn state(input: TokenStream) -> TokenStream {
     syn::parse(input)
@@ -112,7 +134,7 @@ fn expand(input: DeriveInput) -> Result<proc_macro2::TokenStream, Error> {
     let delta_name = format_ident!("{}Delta", name.unraw(), span = Span::call_site());
     let field_name = format_ident!("{}Field", name.unraw(), span = Span::call_site());
     let generics = input.generics;
-    let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
+    let (_, type_generics, _) = generics.split_for_impl();
     let mut state_path: syn::Path = syn::parse_quote!(#name #type_generics);
     if let syn::PathArguments::AngleBracketed(arguments) = &mut state_path
         .segments
@@ -125,7 +147,6 @@ fn expand(input: DeriveInput) -> Result<proc_macro2::TokenStream, Error> {
     let mut state_self = StateSelf(state_path);
     let mut delta_generics = generics.clone();
     state_self.visit_generics_mut(&mut delta_generics);
-    let (delta_impl_generics, _, delta_where_clause) = delta_generics.split_for_impl();
 
     let mut metadata = Vec::with_capacity(fields.len());
     let mut identities = HashMap::new();
@@ -175,12 +196,38 @@ fn expand(input: DeriveInput) -> Result<proc_macro2::TokenStream, Error> {
         metadata.push((ident, field.ty, variant, attr));
     }
 
+    let mut state_generics = generics.clone();
+    state_generics
+        .make_where_clause()
+        .predicates
+        .push(syn::parse_quote!(Self: ::serde::Serialize + ::serde::de::DeserializeOwned));
+    for (_, ty, _, attr) in &metadata {
+        let reducer = &attr.reducer;
+        state_generics
+            .make_where_clause()
+            .predicates
+            .push(syn::parse_quote!(#reducer: ::cognacta_core::Reducer<#ty>));
+        let mut ty = ty.clone();
+        let mut reducer = reducer.clone();
+        state_self.visit_type_mut(&mut ty);
+        state_self.visit_type_mut(&mut reducer);
+        delta_generics
+            .make_where_clause()
+            .predicates
+            .push(syn::parse_quote!(#reducer: ::cognacta_core::Reducer<#ty>));
+    }
+    let (impl_generics, _, where_clause) = state_generics.split_for_impl();
+    let (delta_impl_generics, _, delta_where_clause) = delta_generics.split_for_impl();
+
     let delta_fields = metadata.iter().map(|(ident, ty, _, attr)| {
         let mut ty = ty.clone();
         let mut reducer = attr.reducer.clone();
         state_self.visit_type_mut(&mut ty);
         state_self.visit_type_mut(&mut reducer);
-        quote!(#visibility #ident: ::core::option::Option<<#reducer as ::cognacta_core::Reducer<#ty>>::Delta>)
+        quote!(
+            #[serde(default, skip_serializing_if = "::core::option::Option::is_none", deserialize_with = "::cognacta_core::__private::deserialize_present")]
+            #visibility #ident: ::core::option::Option<<#reducer as ::cognacta_core::Reducer<#ty>>::Delta>
+        )
     });
     let field_variants = metadata.iter().map(|(_, _, variant, _)| variant);
     let field_metadata = metadata.iter().map(|(ident, ty, variant, attr)| {
@@ -291,6 +338,8 @@ fn expand(input: DeriveInput) -> Result<proc_macro2::TokenStream, Error> {
             #(#field_variants,)*
         }
 
+        #[derive(::serde::Serialize, ::serde::Deserialize)]
+        #[serde(bound(serialize = "", deserialize = ""))]
         #visibility struct #delta_name #delta_generics #delta_where_clause {
             #(#delta_fields,)*
         }

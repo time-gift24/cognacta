@@ -1,5 +1,5 @@
 use cognacta_core::{Add, State};
-#[derive(State)]
+#[derive(serde::Serialize, State, serde::Deserialize)]
 struct Bad {
     #[reducer(Add)]
     value: String,

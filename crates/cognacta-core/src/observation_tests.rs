@@ -54,7 +54,7 @@ impl<S: Subscriber + for<'a> LookupSpan<'a>> Layer<S> for Recorder {
             .push((*event.metadata().level(), fields.0));
     }
 }
-#[derive(Default, State)]
+#[derive(serde::Serialize, Default, State, serde::Deserialize)]
 struct Empty {}
 struct Task {
     panic: bool,
@@ -78,7 +78,7 @@ impl NodeInstance<Empty> for Task {
 fn input() -> GraphInput {
     GraphInput::new(HashMap::from([(
         NodeId::new("entry"),
-        Input::new(vec![Arc::new("secret-input")]),
+        Input::new(vec![Arc::new(serde_json::json!("secret-input"))]),
     )]))
 }
 fn context(id: &str) -> RunContext<()> {
@@ -144,7 +144,7 @@ fn lifecycle_covers_initialization_and_distinguishes_unpolled_cancel_and_expecte
             let unsafe_id = format!("control\n{}", "x".repeat(400));
             local.clone().run(&graph, input(), context(&unsafe_id)).await.unwrap().into_result().unwrap();
             let parent = RunContext::root("limit".into(), 0, Arc::new(()));
-            assert!(graph.run(&Input::new(vec![Arc::new(input())]), NodeContext { state: Arc::new(Empty {}), run: parent, key: NodeKey::Instance { template: NodeId::new("worker\n"), key: "x\r".into() } }, local.clone()).await.is_err());
+            assert!(graph.run(&Input::new(vec![Arc::new(serde_json::to_value(input()).unwrap())]), NodeContext { state: Arc::new(Empty {}), run: parent, key: NodeKey::Instance { template: NodeId::new("worker\n"), key: "x\r".into() } }, local.clone()).await.is_err());
         });
     });
     assert!(events(&recorder, "unpolled").is_empty());
@@ -206,7 +206,7 @@ fn events_from_records(
 fn nested_input() -> GraphInput {
     GraphInput::new(HashMap::from([(
         NodeId::new("entry"),
-        Input::new(vec![Arc::new(input())]),
+        Input::new(vec![Arc::new(serde_json::to_value(input()).unwrap())]),
     )]))
 }
 fn panic_initializer() -> Graph<Empty, ()> {
@@ -434,7 +434,7 @@ fn dropping_a_five_level_run_cancels_every_started_run_and_releases_execution_ha
             let mut graph_input = input();
             for _ in 0..4 {
                 graph = Graph::build(vec![Node::new(NodeId::new("entry"), graph)], vec![], vec![], NodeId::new("entry")).unwrap();
-                graph_input = GraphInput::new(HashMap::from([(NodeId::new("entry"), Input::new(vec![Arc::new(graph_input)]))]));
+                graph_input = GraphInput::new(HashMap::from([(NodeId::new("entry"), Input::new(vec![Arc::new(serde_json::to_value(graph_input).unwrap())]))]));
             }
             let scheduler = local();
             let weak_scheduler = Arc::downgrade(&scheduler);

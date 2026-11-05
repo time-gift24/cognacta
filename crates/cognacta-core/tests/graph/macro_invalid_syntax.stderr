@@ -1,0 +1,5 @@
+error: expected one shared value
+ --> tests/graph/macro_invalid_syntax.rs:5:30
+  |
+5 |         entry: shared(1_usize, 2_usize),
+  |                              ^

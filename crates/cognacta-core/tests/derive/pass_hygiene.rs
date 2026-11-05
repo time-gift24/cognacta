@@ -8,7 +8,7 @@ struct None;
 struct Ok;
 struct Err;
 
-#[derive(State)]
+#[derive(serde::Serialize, State, serde::Deserialize)]
 struct Tree {
     #[reducer(Override)]
     next: std::option::Option<std::boxed::Box<Self>>,
@@ -22,7 +22,7 @@ trait Value {
     type Item: Send + Sync + 'static;
 }
 
-#[derive(State)]
+#[derive(serde::Serialize, State, serde::Deserialize)]
 struct Generic<Vec: Send + Sync + 'static>
 where
     Self: Value<Item = Vec>,
@@ -35,7 +35,7 @@ impl<T: Send + Sync + 'static> Value for Generic<T> {
     type Item = T;
 }
 
-#[derive(State)]
+#[derive(serde::Serialize, State, serde::Deserialize)]
 struct LocalScope {
     #[reducer(Override)]
     value: [u8; {

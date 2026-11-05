@@ -6,7 +6,7 @@ error[E0308]: mismatched types
   |                                                                                |
   |                                                                                arguments to this function are incorrect
   |
-  = note: expected fn pointer `for<'a, 'b> fn(&'a String, &'b String) -> std::cmp::Ordering`
+  = note: expected fn pointer `for<'a, 'b> fn(&'a std::string::String, &'b std::string::String) -> std::cmp::Ordering`
                 found fn item `for<'a, 'b> fn(&'a u32, &'b u32) -> std::cmp::Ordering {compare}`
 note: associated function defined here
  --> src/state.rs

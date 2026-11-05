@@ -10,12 +10,13 @@ use std::{
 use crate::{
     DeliverTarget, Directive, DirectiveError, Edge, Error, Graph, Input, Join, LocalScheduler,
     Node, NodeContext, NodeId, NodeInstance, NodeKey, NodeStatus, Outcome, Reducer, RunError,
-    RunStatus, Scheduler, SchedulerConfig, SharedValue, State, WritePolicy,
+    RunStatus, Scheduler, SchedulerConfig, State, WritePolicy,
 };
 
-#[derive(Default, State)]
+#[derive(serde::Serialize, Default, State, serde::Deserialize)]
 struct EmptyState {}
 
+#[derive(serde::Serialize, serde::Deserialize)]
 struct NonClone(u32);
 
 struct Produce;
@@ -45,10 +46,10 @@ impl NodeInstance<EmptyState> for Consume {
         _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<EmptyState, u32>, Error> {
         let source = NodeId::new("source");
-        let value = input.one::<NonClone>(&source)?;
-        assert_eq!(input.all::<NonClone>()?.len(), 1);
-        assert_eq!(input.origins(&source).len(), 1);
-        assert!(matches!(input.one::<String>(&source), Err(Error::Input(_))));
+        let value: NonClone = serde_json::from_value(input.one(&source)?.clone())
+            .map_err(|source| crate::InputError::Decode { source })?;
+        assert_eq!(input.values().len(), 1);
+        assert_eq!(input.many(&source).len(), 1);
         Ok(Outcome {
             value: Some(Arc::new(value.0)),
             state_delta: EmptyStateDelta::default(),
@@ -58,7 +59,7 @@ impl NodeInstance<EmptyState> for Consume {
 }
 
 #[tokio::test]
-async fn non_clone_output_is_shared_once_across_duplicate_edges() {
+async fn non_clone_output_crosses_duplicate_edges_as_json() {
     let graph = Graph::<_, u32>::build(
         vec![
             Node::new(NodeId::new("source"), Produce),
@@ -116,7 +117,7 @@ impl NodeInstance<EmptyState> for Planner {
     ) -> Result<Outcome<EmptyState, String>, Error> {
         let delivery = |key: &str| DeliverTarget {
             template: NodeId::new("worker"),
-            payload: Arc::new(String::from("job")) as SharedValue,
+            payload: Arc::new(serde_json::json!("job")),
             key: key.into(),
         };
         Ok(Outcome {
@@ -195,7 +196,7 @@ impl NodeInstance<EmptyState> for TransitionSource {
             state_delta: EmptyStateDelta::default(),
             directive: Some(Directive::Transition {
                 target: NodeId::new("target"),
-                payload: Some(Arc::new(2_u32) as SharedValue),
+                payload: Some(Arc::new(serde_json::json!(2_u32))),
                 immediate: false,
             }),
         })
@@ -216,7 +217,7 @@ impl NodeInstance<EmptyState> for LastTransition {
             state_delta: EmptyStateDelta::default(),
             directive: Some(Directive::Transition {
                 target: NodeId::new("target"),
-                payload: Some(Arc::new(3_u32) as SharedValue),
+                payload: Some(Arc::new(serde_json::json!(3_u32))),
                 immediate: false,
             }),
         })
@@ -232,10 +233,11 @@ impl NodeInstance<EmptyState> for TransitionTarget {
         _ctx: NodeContext<EmptyState>,
         _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<EmptyState, u32>, Error> {
-        assert!(input.one::<u32>(&NodeId::new("first")).is_err());
-        let last = input.one::<u32>(&NodeId::new("last"))?;
+        assert!(input.one(&NodeId::new("first")).is_err());
+        let last: u32 = serde_json::from_value(input.one(&NodeId::new("last"))?.clone())
+            .map_err(|source| crate::InputError::Decode { source })?;
         Ok(Outcome {
-            value: Some(Arc::new(*last)),
+            value: Some(Arc::new(last)),
             state_delta: EmptyStateDelta::default(),
             directive: None,
         })
@@ -284,7 +286,7 @@ async fn last_transition_replaces_payload_and_permit() {
     assert_eq!(run.status(), RunStatus::Completed, "{:?}", run.errors());
     let target = run.node(&NodeKey::Static(NodeId::new("target"))).unwrap();
     assert_eq!(target.attempts(), 1);
-    assert_eq!(target.output().unwrap().downcast_ref::<u32>(), Some(&3));
+    assert_eq!(target.output().unwrap().as_ref(), &serde_json::json!(3));
 }
 
 struct NoOutput;
@@ -351,7 +353,7 @@ impl Reducer<u32> for CellReducer {
     }
 }
 
-#[derive(Default, State)]
+#[derive(serde::Serialize, Default, State, serde::Deserialize)]
 struct CellState {
     #[reducer(CellReducer)]
     count: u32,
@@ -417,10 +419,11 @@ impl NodeInstance<EmptyState> for RearmNode {
         _scheduler: Arc<dyn Scheduler>,
     ) -> Result<Outcome<EmptyState, u32>, Error> {
         let call = self.calls.fetch_add(1, Ordering::Relaxed) + 1;
-        self.inputs
-            .lock()
-            .unwrap()
-            .push(input.entry::<String>()?.len());
+        self.inputs.lock().unwrap().push(
+            (serde_json::from_value::<String>(input.entry()?.clone())
+                .map_err(|source| cognacta_core::InputError::Decode { source })?)
+            .len(),
+        );
         Ok(Outcome {
             value: Some(Arc::new(call as u32)),
             state_delta: EmptyStateDelta::default(),
@@ -461,7 +464,7 @@ async fn rearm_preserves_attempts_and_entry_input_but_replaces_output() {
                     .map(|id| {
                         (
                             id.clone(),
-                            Input::new(vec![Arc::new(String::from("run")) as SharedValue]),
+                            Input::new(vec![Arc::new(serde_json::json!("run"))]),
                         )
                     })
                     .collect(),
@@ -475,7 +478,7 @@ async fn rearm_preserves_attempts_and_entry_input_but_replaces_output() {
     assert_eq!(*inputs.lock().unwrap(), [3, 3]);
     let node = run.node(&NodeKey::Static(NodeId::new("rearm"))).unwrap();
     assert_eq!(node.attempts(), 2);
-    assert_eq!(node.output().unwrap().downcast_ref::<u32>(), Some(&2));
+    assert_eq!(node.output().unwrap().as_ref(), &serde_json::json!(2));
 }
 
 struct JoinTarget;

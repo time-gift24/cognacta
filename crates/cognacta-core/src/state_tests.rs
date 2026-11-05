@@ -6,7 +6,7 @@ use std::{
 
 use crate::{Add, Append, Error, Merge, MergeError, Override, Reducer, Sort, State, WritePolicy};
 
-#[derive(State)]
+#[derive(serde::Serialize, State, serde::Deserialize)]
 struct BatchState {
     #[reducer(Override)]
     title: Option<String>,
@@ -109,7 +109,7 @@ impl Reducer<Vec<String>> for FinishFails {
     }
 }
 
-#[derive(State)]
+#[derive(serde::Serialize, State, serde::Deserialize)]
 struct FinishState {
     #[reducer(Append)]
     first: Vec<String>,
@@ -143,12 +143,20 @@ fn late_finish_failure_does_not_commit_earlier_fields() {
 #[test]
 fn reducers_preserve_order_and_checked_intermediate_steps() {
     let mut merge = Merge;
-    let current = HashMap::from([("a", 1)]);
+    let current = HashMap::from([("a".to_owned(), 1)]);
     let value = merge
-        .reduce(&current, HashMap::from([("a", 2), ("b", 3)]))
+        .reduce(
+            &current,
+            HashMap::from([("a".to_owned(), 2), ("b".to_owned(), 3)]),
+        )
         .unwrap();
-    let value = merge.reduce(&value, HashMap::from([("a", 4)])).unwrap();
-    assert_eq!(value, HashMap::from([("a", 4), ("b", 3)]));
+    let value = merge
+        .reduce(&value, HashMap::from([("a".to_owned(), 4)]))
+        .unwrap();
+    assert_eq!(
+        value,
+        HashMap::from([("a".to_owned(), 4), ("b".to_owned(), 3)])
+    );
 
     let mut add = Add;
     assert!(matches!(
